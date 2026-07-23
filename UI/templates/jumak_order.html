@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>주막 | 주문하기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Serif+KR:wght@400;500;700&family=Noto+Sans+KR:wght@500;700&display=swap"
+  rel="stylesheet"
+/>
+<style>
+/* =========================================================
+   토큰 시스템
+   ========================================================= */
+:root {
+  /* 색상 */
+  --color-hanji: #F3EAD3;        /* 한지 바탕색 */
+  --color-hanji-dark: #E4D5A9;   /* 그림자/구분선용 짙은 한지색 */
+  --color-ink: #2B2118;          /* 먹색 - 본문 텍스트 */
+  --color-pine: #445940;         /* 소나무색 - 보조 강조 */
+  --color-dancheong-red: #9B2C22;/* 단청 적색 - 주요 강조/버튼 */
+  --color-dancheong-red-dark: #7A211A;
+  --color-ochre: #C98A3D;        /* 오방색 황토 - 포인트 라인 */
+  --color-wood: #6B4A32;         /* 짙은 나무색 - 헤더/카드 테두리 */
+
+  /* 폰트 */
+  --font-display: 'Gowun Batang', serif;
+  --font-body: 'Noto Serif KR', serif;
+  --font-ui: 'Noto Sans KR', sans-serif;
+
+  /* 레이아웃 */
+  --radius-card: 6px;
+  --shadow-wood: 0 3px 0 rgba(43, 33, 24, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-hanji);
+  background-image:
+    radial-gradient(rgba(107, 74, 50, 0.05) 1px, transparent 1px);
+  background-size: 3px 3px;
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  padding-bottom: 120px; /* 하단 고정 주문 바 공간 확보 */
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* =========================================================
+   현판(懸板) 헤더
+   ========================================================= */
+.signboard {
+  background: var(--color-wood);
+  color: var(--color-hanji);
+  text-align: center;
+  padding: 2.5rem 1.5rem 2rem;
+  position: relative;
+  border-bottom: 6px solid var(--color-dancheong-red);
+  box-shadow: var(--shadow-wood);
+}
+
+.signboard__rope {
+  width: 2px;
+  height: 28px;
+  background: var(--color-ochre);
+  margin: 0 auto 0.75rem;
+}
+
+.signboard__title {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 8vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.signboard__subtitle {
+  font-family: var(--font-ui);
+  font-size: 1.15rem;
+  color: var(--color-hanji-dark);
+  margin: 0.6rem 0 0;
+  letter-spacing: 0.15em;
+}
+
+/* =========================================================
+   메뉴 목록
+   ========================================================= */
+.menu-hall {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 1rem;
+}
+
+.menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.menu-card {
+  background: #FFFDF6;
+  border: 1px solid var(--color-hanji-dark);
+  border-left: 8px solid var(--color-wood);
+  border-radius: var(--radius-card);
+  padding: 1.3rem 1.4rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 2px 6px rgba(43, 33, 24, 0.08);
+}
+
+.menu-card{
+    position:relative;
+}
+
+.soldout-badge{
+
+    position:absolute;
+    top:10px;
+    right:10px;
+
+    background:#d32f2f;
+    color:white;
+
+    padding:5px 10px;
+
+    border-radius:6px;
+
+    font-size:14px;
+    font-weight:bold;
+}
+
+.menu-card.soldout{
+    opacity:0.3;
+}
+
+.menu-card.soldout .stepper-btn{
+    pointer-events:none;
+}
+
+.menu-card__badge {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-dancheong-red);
+  flex-shrink: 0;
+}
+
+.menu-card__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.menu-card__name {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 5vw, 1.9rem);
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+  color: var(--color-ink);
+}
+
+.menu-card__price {
+  font-family: var(--font-ui);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-dancheong-red);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-unit {
+  font-size: 1rem;
+  margin-left: 0.15rem;
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+/* 수량 조절 */
+.menu-card__stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.stepper-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid var(--color-wood);
+  background: var(--color-hanji);
+  color: var(--color-wood);
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.stepper-btn:hover {
+  background: var(--color-hanji-dark);
+}
+
+.stepper-btn:active {
+  transform: scale(0.92);
+}
+
+.stepper-btn:focus-visible,
+.stamp-button:focus-visible,
+.receipt__close:focus-visible {
+  outline: 3px solid var(--color-pine);
+  outline-offset: 2px;
+}
+
+.stepper-qty {
+  min-width: 2ch;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================
+   하단 주문 바
+   ========================================================= */
+.order-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-wood);
+  border-top: 4px solid var(--color-dancheong-red);
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.order-bar__total {
+  color: var(--color-hanji);
+  font-family: var(--font-ui);
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.order-bar__label {
+  font-size: 1.05rem;
+  color: var(--color-hanji-dark);
+}
+
+.order-bar__amount {
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-bar__unit {
+  font-size: 1.05rem;
+}
+
+.stamp-button {
+  background: var(--color-dancheong-red);
+  color: var(--color-hanji);
+  border: none;
+  border-radius: 8px;
+  padding: 1rem 1.8rem;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--color-dancheong-red-dark);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.stamp-button:hover {
+  background: var(--color-dancheong-red-dark);
+}
+
+.stamp-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--color-dancheong-red-dark);
+}
+
+.stamp-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   주문서(영수증) 오버레이
+   ========================================================= */
+.receipt-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(43, 33, 24, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 10;
+}
+
+.receipt-overlay[hidden] {
+  display: none;
+}
+
+.receipt {
+  background: #FFFDF6;
+  width: 100%;
+  max-width: 380px;
+  padding: 2rem 1.75rem 1.75rem;
+  border-radius: 4px;
+  position: relative;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+
+.receipt__eyebrow {
+  font-family: var(--font-ui);
+  font-size: 0.95rem;
+  letter-spacing: 0.3em;
+  color: var(--color-ochre);
+  margin: 0 0 0.4rem;
+}
+
+.receipt__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  margin: 0 0 1.2rem;
+  color: var(--color-ink);
+}
+
+.receipt__items {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 1.05rem;
+  border-top: 1px dashed var(--color-hanji-dark);
+  border-bottom: 1px dashed var(--color-hanji-dark);
+  padding: 0.8rem 0;
+}
+
+.receipt__items li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt__total {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-ui);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 시그니처 요소: 도장(印) 스탬프 애니메이션 */
+.receipt__seal {
+  width: 84px;
+  height: 84px;
+  border: 4px solid var(--color-dancheong-red);
+  border-radius: 8px;
+  margin: 0 auto 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(1.6) rotate(-18deg);
+  opacity: 0;
+  color: var(--color-dancheong-red);
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 700;
+}
+
+.receipt-overlay.is-visible .receipt__seal {
+  animation: stamp-down 0.35s ease-out 0.15s forwards;
+}
+
+@keyframes stamp-down {
+  0% {
+    transform: scale(1.6) rotate(-18deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.92) rotate(-8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(-8deg);
+    opacity: 1;
+  }
+}
+
+.receipt__close {
+  background: var(--color-wood);
+  color: var(--color-hanji);
+  border: none;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  font-family: var(--font-ui);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.receipt__close:hover {
+  background: var(--color-ink);
+}
+
+/* =========================================================
+   반응형 / 접근성
+   ========================================================= */
+@media (max-width: 420px) {
+  .menu-card {
+    flex-wrap: wrap;
+  }
+  .menu-card__stepper {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .receipt-overlay.is-visible .receipt__seal {
+    animation: none;
+    opacity: 1;
+    transform: scale(1) rotate(-8deg);
+  }
+  .stepper-btn,
+  .stamp-button {
+    transition: none;
+  }
+}
+
+</style>
+</head>
+<body>
+
+  <!-- 상단 현판(懸板) 헤더 -->
+  <header class="signboard">
+    <div class="signboard__rope" aria-hidden="true"></div>
+    <h1 class="signboard__title">酒幕 주막</h1>
+    <p class="signboard__subtitle">오늘의 상차림</p>
+  </header>
+
+  <main class="menu-hall">
+
+    <!-- 메뉴 목록 -->
+    <ul class="menu-list" id="menu-list">
+      <!-- JS가 menuData 기반으로 카드를 채워 넣습니다 -->
+    </ul>
+
+    <template id="menu-card-template">
+      <li class="menu-card" data-menu-id="">
+        <div class="soldout-badge" hidden>품절</div>
+
+        <div class="menu-card__badge" aria-hidden="true"></div>
+        <div class="menu-card__info">
+          <p class="menu-card__name"></p>
+          <p class="menu-card__price">
+            <span class="price-amount"></span>
+            <span class="price-unit">원</span>
+          </p>
+        </div>
+
+        <div class="menu-card__stepper" role="group">
+          <button type="button" class="stepper-btn stepper-btn--minus" aria-label="수량 감소">－</button>
+          <span class="stepper-qty" aria-live="polite">0</span>
+          <button type="button" class="stepper-btn stepper-btn--plus" aria-label="수량 증가">＋</button>
+        </div>
+      </li>
+    </template>
+
+  </main>
+
+  <!-- 하단 주문 바 -->
+  <footer class="order-bar">
+    <div class="order-bar__total">
+      <span class="order-bar__label">총 금액</span>
+      <span class="order-bar__amount" id="total-amount">0</span>
+      <span class="order-bar__unit">원</span>
+    </div>
+    <button type="button" id="order-button" class="stamp-button">
+      <span class="stamp-button__text">주문하기</span>
+    </button>
+  </footer>
+
+  <!-- 주문 상태 안내 (스크린리더용) -->
+  <div id="order-status" class="sr-only" role="status" aria-live="assertive"></div>
+
+  <!-- 주문 완료 영수증(주문서) 오버레이 -->
+  <div id="receipt-overlay" class="receipt-overlay" hidden>
+    <div class="receipt" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
+      <p class="receipt__eyebrow">주문서</p>
+      <h2 id="receipt-title" class="receipt__title">주문이 접수되었습니다</h2>
+      <ul class="receipt__items" id="receipt-items"></ul>
+      <div class="receipt__total">
+        <span>합계</span>
+        <span id="receipt-total">0원</span>
+      </div>
+      <div class="receipt__seal" aria-hidden="true">
+        <span class="receipt__seal-mark">接</span>
+      </div>
+      <button type="button" id="receipt-close" class="receipt__close">확인</button>
+    </div>
+  </div>
+
+  <script>
+/**
+ * ============================================================
+ * 백엔드 연동 설정
+ * ------------------------------------------------------------
+ * DB / 주문 저장·조회 로직은 이미 백엔드에 구현되어 있다고 하셨으므로,
+ * 아래 CONFIG 부분의 엔드포인트와 요청/응답 형식만 실제 API에 맞게
+ * 수정하시면 됩니다.
+ *
+ * 기대하는 백엔드 계약(contract) 예시:
+ *
+ *   POST {ORDER_ENDPOINT}
+ *   요청 body:
+ *   {
+ *     "items": [
+ *       { "menuId": "menu1", "name": "볶음밥", "price": 15000, "qty": 2 },
+ *       { "menuId": "menu3", "name": "막걸리", "price": 3000,  "qty": 1 }
+ *     ],
+ *     "totalPrice": 33000
+ *   }
+ *
+ *   응답 body (성공 시, 예시):
+ *   {
+ *     "orderId": 123,
+ *     "status": "접수완료"
+ *   }
+ *
+ * 응답 형식이 다르다면 handleOrderSuccess() 안에서 파싱 부분만
+ * 바꿔주시면 나머지 UI 로직은 그대로 재사용할 수 있습니다.
+ * ============================================================
+ */
+const CONFIG = {
+  ORDER_ENDPOINT: "/api/orders", // TODO: 실제 주문 저장 API 경로로 교체
+};
+
+// 메뉴 데이터 (메뉴 ID는 백엔드 DB의 메뉴 식별자와 맞춰주세요)
+const menuData = [
+  { id: "menu1", name: "볶음밥", price: 15000, soldout:false },
+  { id: "menu2", name: "파전", price: 10000, soldout:false },
+  { id: "menu3", name: "막걸리", price: 3000, soldout:false },
+];
+
+// 메뉴별 현재 수량 상태
+const quantities = {};
+menuData.forEach((item) => (quantities[item.id] = 0));
+
+const menuListEl = document.getElementById("menu-list");
+const cardTemplate = document.getElementById("menu-card-template");
+const totalAmountEl = document.getElementById("total-amount");
+const orderButton = document.getElementById("order-button");
+const orderStatusEl = document.getElementById("order-status");
+const receiptOverlay = document.getElementById("receipt-overlay");
+const receiptItemsEl = document.getElementById("receipt-items");
+const receiptTotalEl = document.getElementById("receipt-total");
+const receiptCloseBtn = document.getElementById("receipt-close");
+
+function formatWon(amount) {
+  return amount.toLocaleString("ko-KR");
+}
+
+/** 메뉴 카드를 화면에 렌더링 */
+function renderMenu() {
+
+  menuData.forEach((item) => {
+
+    const node = cardTemplate.content.cloneNode(true);
+
+    const li = node.querySelector(".menu-card");
+
+    li.dataset.menuId = item.id;
+
+
+    // ⭐ 품절 처리
+    if(item.soldout){
+
+        li.classList.add("soldout");
+
+        const badge = li.querySelector(".soldout-badge");
+        badge.hidden = false;
+
+    }
+
+
+    node.querySelector(".menu-card__name").textContent = item.name;
+
+    node.querySelector(".price-amount").textContent =
+        formatWon(item.price);
+
+
+    const qtyLabel = node.querySelector(".stepper-qty");
+
+    const minusBtn = node.querySelector(".stepper-btn--minus");
+
+    const plusBtn = node.querySelector(".stepper-btn--plus");
+
+
+    minusBtn.addEventListener(
+        "click",
+        () => updateQty(item.id,-1,qtyLabel)
+    );
+
+    plusBtn.addEventListener(
+        "click",
+        () => updateQty(item.id,1,qtyLabel)
+    );
+
+
+    menuListEl.appendChild(node);
+
+  });
+
+}
+
+/** 수량 변경 및 총액 갱신 */
+function updateQty(menuId, delta, qtyLabel) {
+  const next = Math.max(0, quantities[menuId] + delta);
+  quantities[menuId] = next;
+  qtyLabel.textContent = next;
+  updateTotal();
+}
+
+function updateTotal() {
+  const total = menuData.reduce(
+    (sum, item) => sum + item.price * quantities[item.id],
+    0
+  );
+  totalAmountEl.textContent = formatWon(total);
+  return total;
+}
+
+/** 현재 선택된 항목들을 백엔드 전송용 배열로 변환 */
+function buildOrderPayload() {
+  const items = menuData
+    .filter((item) => quantities[item.id] > 0)
+    .map((item) => ({
+      menuId: item.id,
+      name: item.name,
+      price: item.price,
+      qty: quantities[item.id],
+    }));
+
+  const totalPrice = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  return { items, totalPrice };
+}
+
+/** 주문하기 버튼 클릭 */
+async function handleOrder() {
+  const payload = buildOrderPayload();
+
+  if (payload.items.length === 0) {
+    orderStatusEl.textContent = "메뉴를 하나 이상 선택해 주세요.";
+    return;
+  }
+
+  orderButton.disabled = true;
+  orderButton.querySelector(".stamp-button__text").textContent = "주문 접수 중...";
+
+  try {
+    const response = await fetch(CONFIG.ORDER_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`서버 응답 오류: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    // ⭐ 재고 부족 검사
+    if (result.status === "error") {
+      orderStatusEl.textContent = result.message;
+      alert(result.message);
+      // ⭐ 주문 후 재고 다시 확인
+      loadInventory();
+      return;
+    }
+
+    // ⭐ 정상 주문일 때만 실행
+    handleOrderSuccess(payload, result);
+    await loadInventory();
+
+  } catch (error) {
+    console.error("주문 전송 실패:", error);
+    orderStatusEl.textContent =
+      "주문 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+  } finally {
+    orderButton.disabled = false;
+    orderButton.querySelector(".stamp-button__text").textContent = "주문하기";
+  }
+}
+
+async function loadInventory(){
+
+    const response = await fetch("/api/inventory");
+
+    const inventory = await response.json();
+
+
+    inventory.forEach(item=>{
+
+        const card = document.querySelector(
+            `[data-menu-id="${item.id}"]`
+        );
+
+
+        if(!card) return;
+
+
+        if(item.stock === 0){
+
+            card.classList.add("soldout");
+
+            card.querySelector(".soldout-badge").hidden=false;
+
+
+            card.querySelectorAll(".stepper-btn")
+                .forEach(btn=>{
+                    btn.disabled=true;
+                });
+
+        }
+
+    });
+}
+
+/** 주문 성공 시 영수증(주문서) 표시 + 상태 초기화 */
+function handleOrderSuccess(payload, result) {
+  receiptItemsEl.innerHTML = "";
+  payload.items.forEach((item) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span>${item.name} x ${item.qty}</span><span>${formatWon(
+      item.price * item.qty
+    )}원</span>`;
+    receiptItemsEl.appendChild(li);
+  });
+  receiptTotalEl.textContent = `${formatWon(payload.totalPrice)}원`;
+
+  receiptOverlay.hidden = false;
+  requestAnimationFrame(() => receiptOverlay.classList.add("is-visible"));
+
+  orderStatusEl.textContent = `주문이 접수되었습니다. (주문번호: ${
+    result && result.orderId ? result.orderId : "확인 중"
+  })`;
+
+  // 수량 및 총액 초기화
+  menuData.forEach((item) => (quantities[item.id] = 0));
+  document
+    .querySelectorAll(".stepper-qty")
+    .forEach((el) => (el.textContent = "0"));
+  updateTotal();
+
+  loadInventory();
+}
+
+function closeReceipt() {
+  receiptOverlay.classList.remove("is-visible");
+  receiptOverlay.hidden = true;
+}
+
+// 이벤트 바인딩
+orderButton.addEventListener("click", handleOrder);
+receiptCloseBtn.addEventListener("click", closeReceipt);
+receiptOverlay.addEventListener("click", (e) => {
+  if (e.target === receiptOverlay) closeReceipt();
+});
+
+// 초기 렌더링
+renderMenu();
+updateTotal();
+loadInventory();
+
+  </script>
+</body>
+</html>
