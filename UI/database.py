@@ -12,7 +12,8 @@ def create_database():
     CREATE TABLE IF NOT EXISTS orders(
         order_id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_time TEXT,
-        total_price INTEGER
+        total_price INTEGER,
+        status TEXT DEFAULT 'waiting'
     )
     """)
 
@@ -58,9 +59,9 @@ def save_order(data):
 
     # 주문 저장
     cursor.execute("""
-        INSERT INTO orders(order_time, total_price)
-        VALUES (?, ?)
-    """, (now, data["totalPrice"]))
+        INSERT INTO orders(order_time, total_price, status)
+        VALUES (?, ?, ?)
+    """, (now, data["totalPrice"], "WAITING"))
 
     # 방금 생성된 주문번호
     order_id = cursor.lastrowid
@@ -116,12 +117,11 @@ def show_orders():
         print(row)
 
 def get_orders():
-
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT order_id, order_time, total_price
+        SELECT order_id, order_time, total_price, status
         FROM orders
         ORDER BY order_id DESC
     """)
@@ -146,6 +146,7 @@ def get_orders():
             "order_id": order_id,
             "order_time": order[1],
             "total_price": order[2],
+            "status": order[3],
             "order_items": items
         })
 
@@ -232,3 +233,16 @@ def check_stock(data):
     conn.close()
 
     return True, ""
+
+def update_order_status(order_id, status):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE orders
+        SET status=?
+        WHERE order_id=?
+    """, (status, order_id))
+
+    conn.commit()
+    conn.close()

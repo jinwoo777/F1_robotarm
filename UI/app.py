@@ -6,7 +6,8 @@ from database import (
     get_today_sales,
     get_inventory,
     update_inventory,
-    check_stock
+    check_stock,
+    update_order_status
 )
 
 create_database()
@@ -92,6 +93,42 @@ def inventory_api():
         })
 
     return jsonify(result)
+
+@app.route("/update_status", methods=["POST"])
+def update_status():
+
+    order_id = request.form["order_id"]
+    status = request.form["status"]
+
+    update_order_status(order_id, status)
+
+    return redirect("/admin")
+
+robot_status = {
+    "state": "대기",
+    "task": "없음",
+    "order_id": "-"
+}
+
+# 상태 조회
+@app.route("/api/robot_status")
+def robot_state():
+    return jsonify(robot_status)
+
+
+# 상태 변경
+@app.route("/api/robot_status", methods=["POST"])
+def update_robot_status():
+
+    data = request.get_json()
+
+    robot_status["state"] = data.get("state", robot_status["state"])
+    robot_status["task"] = data.get("task", robot_status["task"])
+    robot_status["order_id"] = data.get("order_id", robot_status["order_id"])
+
+    return jsonify({
+        "status": "success"
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
