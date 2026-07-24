@@ -1,0 +1,130 @@
+# 빠른 자동 테스트 전용 procedural 설정.
+pan:
+  stl_path: null
+  stl_scale: 0.001
+  mass_kg: 0.700
+  kinematic: true
+  use_procedural_demo: true
+  collision_mode: compound_proxy
+  collision_proxy:
+    inner_radius_m: 0.105
+    bottom_radius_m: 0.050
+    bottom_thickness_m: 0.006
+    wall_height_m: 0.055
+    wall_thickness_m: 0.006
+    wall_segments: 16
+    rim_radius_m: 0.110
+  initial_pose:
+    position_m: [0.0, 0.0, 0.18]
+    rpy_rad: [0.0, 0.0, 0.0]
+
+particles:
+  count: 8
+  density_kg_m3: 900.0
+  nominal_radius_m: 0.008
+  radius_jitter_fraction: 0.10
+  mass_tolerance_kg: 1.0e-9
+  target_mass_range_kg: [0.012, 0.030]
+  spawn_radius_m: 0.045
+  spawn_height_m: 0.010
+  spawn_clearance_m: 0.0005
+  max_spawn_attempts: 3000
+  friction: 0.55
+  restitution: 0.05
+  linear_damping: 0.05
+  angular_damping: 0.03
+  settle_time_s: 0.08
+  settle_velocity_threshold: 0.08
+
+trajectory:
+  cycles: 5
+  insertion_angle_deg: 45.0
+  insertion_distance_range_m: [0.010, 0.020]
+  lift_height_range_m: [0.015, 0.030]
+  backward_distance_range_m: [0.012, 0.025]
+  pitch_amplitude_range_rad: [0.04, 0.12]
+  cycle_time_range_s: [0.20, 0.35]
+  insert_phase_ratio_range: [0.18, 0.28]
+  catch_phase_ratio_range: [0.16, 0.26]
+  transition_forward_offset_m: 0.003
+  transition_lift_offset_m: 0.003
+  catch_offset_m: [-0.004, 0.0, 0.006]
+  sample_rate_hz: 100.0
+  max_cartesian_velocity: 2.0
+  max_cartesian_acceleration: 35.0
+  max_cartesian_jerk: 1200.0
+  workspace:
+    x_m: [-0.15, 0.15]
+    y_m: [-0.01, 0.01]
+    z_m: [0.08, 0.30]
+    pitch_rad: [-0.50, 0.50]
+  y_tolerance: 1.0e-7
+  roll_tolerance: 1.0e-7
+  yaw_tolerance: 1.0e-7
+  start_position_m: [0.0, 0.0, 0.18]
+  start_rpy_rad: [0.0, 0.0, 0.0]
+
+simulation:
+  timestep_s: 0.004
+  gravity_m_s2: [0.0, 0.0, -9.81]
+  post_rollout_settle_s: 0.12
+  contact_gap_tolerance_s: 0.025
+  spill_grace_time_s: 0.08
+  spill_boundary_radius_m: 0.140
+  spill_boundary_below_rim_m: 0.08
+  max_steps: 5000
+
+mixing:
+  label_mode: quadrant
+  grid_rows: 3
+  grid_cols: 3
+  minimum_particles_per_cell: 1
+  pan_radius_m: 0.105
+
+reward:
+  w_mix: 3.0
+  w_spill: 8.0
+  w_jerk: 0.05
+  w_acc: 0.05
+  w_invalid: 20.0
+  jerk_normalization: 100000.0
+  acceleration_normalization: 1000.0
+  height_penalty_enabled: false
+  maximum_height_m: 0.30
+  w_height: 0.0
+
+robot:
+  enabled: false
+  required: false
+  urdf_path: null
+  base_link: null
+  tcp_link: null
+  q_teach: null
+  T_base_tcp_teach: null
+  T_tcp_pan: null
+  T_base_wok: null
+  joint_velocity_limits: null
+  joint_acceleration_limits: null
+  branch_jump_threshold_rad: null
+  collision_check: false
+
+training:
+  algorithm: SAC
+  total_timesteps: 8
+  seed: 3
+  target_mass_sampling: uniform
+  observation_radius_stats: false
+  learning_rate: 0.0003
+  buffer_size: 64
+  learning_starts: 1
+  batch_size: 4
+  evaluation_interval: 4
+  evaluation_episodes: 2
+  checkpoint_directory: checkpoints
+
+logging:
+  output_directory: results
+  save_particle_trajectories: false
+  save_video: false
+  save_csv: true
+  save_npz: true

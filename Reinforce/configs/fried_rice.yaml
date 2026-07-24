@@ -1,0 +1,133 @@
+# 실제 로봇을 연결하지 않는 볶음밥 pan-only profile.
+# Cartesian cap은 제조사 보증 한계가 아니라 초기 offline engineering gate다.
+base_config: default.yaml
+
+particles:
+  profile: fried_rice
+  # 100% 기준 총 60개; episode마다 종류별 같은 개수를 뽑아 60~120개로 변동한다.
+  count: 60
+  target_mass_range_kg: [0.056, 0.128]
+  spawn_radius_m: 0.065
+  spawn_height_m: 0.010
+  spawn_clearance_m: 0.0005
+  max_spawn_attempts: 20000
+  friction: [0.55, 0.01, 0.001]
+  linear_damping: 0.05
+  angular_damping: 0.03
+  settle_time_s: 1.50
+  settle_velocity_threshold: 0.03
+  fried_rice:
+    count_per_type: 20
+    count_per_type_range: [20, 40]
+    reference_drop_height_m: 0.20
+    contact_time_constant_s: 0.006
+    calibration_timestep_s: 0.002
+    large_sphere:
+      radius_m: 0.005
+      mass_mean_kg: 0.002
+      mass_jitter_fraction: 0.10
+      target_rebound_height_m: 0.030
+      contact_damping_ratio: 0.300627381729
+    small_sphere:
+      radius_m: 0.003
+      mass_kg: 0.0008
+      mass_jitter_fraction: 0.0
+      target_rebound_height_m: 0.010
+      contact_damping_ratio: 0.516754797652
+    ellipsoid:
+      # 사용자 값은 full length가 아니라 semi-axis로 우선 해석했다.
+      semi_axes_m: [0.005, 0.002, 0.002]
+      mass_kg: 0.0002
+      mass_jitter_fraction: 0.0
+      target_rebound_height_m: 0.015
+      contact_damping_ratio: 0.469157864254
+
+trajectory:
+  profile: fried_rice_teaching
+  cycles: 5
+  insertion_angle_deg: 45.0
+  # provisional M0609 Cartesian gate; URDF/teaching/실기 검증을 대체하지 않는다.
+  max_cartesian_velocity: 0.35
+  max_angular_velocity: 0.35
+  max_cartesian_acceleration: 0.90
+  max_angular_acceleration: 1.25
+  max_cartesian_jerk: 9.0
+  max_angular_jerk: 11.5
+  # 각 teaching phase 경계의 순간 정지는 의도된 방향 전환이며 dwell time은 없다.
+  allow_cycle_boundary_stop: true
+  workspace:
+    x_m: [-0.02, 0.24]
+    y_m: [-0.01, 0.01]
+    z_m: [-0.04, 0.22]
+    pitch_rad: [-0.30, 0.10]
+  fried_rice:
+    cycles: 5
+    insertion_angle_deg: 45.0
+    tilt_direction: -1
+    insertion_distance_range_m: [0.20, 0.30]
+    tilt_angle_range_rad: [0.08726646259971647, 0.2617993877991494]  # 5~15 deg
+    linear_speed_range_m_s: [0.20, 0.30]
+    angular_speed_range_rad_s: [0.15, 0.30]
+    # phase duration retiming에 쓰는 provisional acceleration/jerk gate.
+    linear_acceleration_limit_m_s2: 0.80
+    angular_acceleration_limit_rad_s2: 1.10
+    linear_jerk_limit_m_s3: 8.0
+    angular_jerk_limit_rad_s3: 10.0
+    minimum_phase_duration_s: 0.50
+    sample_rate_hz: 100.0
+
+simulation:
+  timestep_s: 0.002
+  max_steps: 30000
+  post_rollout_settle_s: 0.75
+  record_every_n_steps: 5
+
+robot:
+  enabled: false
+  required: false
+  # 이 cap set은 offline report/export에만 쓰며 실제 controller 값이 아니다.
+  cartesian_caps:
+    linear_velocity_m_s: 0.35
+    angular_velocity_rad_s: 0.35
+    linear_acceleration_m_s2: 0.90
+    angular_acceleration_rad_s2: 1.25
+    linear_jerk_m_s3: 9.0
+    angular_jerk_rad_s3: 11.5
+
+training:
+  algorithm: SAC
+  # WokMixingEnv는 one-step episode이므로 100 timestep == 100 episode다.
+  total_timesteps: 100
+  seed: 17
+  target_mass_sampling: generated_mixture
+  # 실제 kg은 info에 유지하고 정책 입력만 질량 범위 기준 [-1, 1]로 정규화한다.
+  observation_mass_normalization: symmetric_range
+  # 같은 질량에서도 접촉 입자 수 차이를 구분하도록 종류별 공통 개수도 관측한다.
+  observation_count_per_type: true
+  observation_radius_stats: false
+  learning_rate: 0.0003
+  buffer_size: 10000
+  # 100회 pilot 안에서도 실제 gradient update가 일어나도록 warm-up을 줄인다.
+  learning_starts: 20
+  batch_size: 32
+  gamma: 0.0
+  train_freq: 1
+  gradient_steps: 4
+  ent_coef: auto
+  # 정확히 100개 physics episode만 실행하고 평가는 완료 뒤 별도 수행한다.
+  evaluation_interval: 0
+  evaluation_episodes: 10
+  checkpoint_interval: 20
+  checkpoint_save_replay_buffer: true
+  checkpoint_directory: checkpoints/fried_rice_sac_100
+  device: cpu
+  policy_kwargs:
+    net_arch: [128, 128]
+  random_walk:
+    enabled: true
+    step_std: [0.04, 0.04, 0.05, 0.05]
+    bound: 0.25
+    seed: 34
+
+logging:
+  output_directory: results/fried_rice
