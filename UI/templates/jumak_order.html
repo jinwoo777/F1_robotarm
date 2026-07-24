@@ -3,811 +3,482 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>주막 | 주문하기</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link
-  href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Serif+KR:wght@400;500;700&family=Noto+Sans+KR:wght@500;700&display=swap"
-  rel="stylesheet"
-/>
+<title>테이블 오더</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet"/>
 <style>
-/* =========================================================
-   토큰 시스템
-   ========================================================= */
-:root {
-  /* 색상 */
-  --color-hanji: #F3EAD3;        /* 한지 바탕색 */
-  --color-hanji-dark: #E4D5A9;   /* 그림자/구분선용 짙은 한지색 */
-  --color-ink: #2B2118;          /* 먹색 - 본문 텍스트 */
-  --color-pine: #445940;         /* 소나무색 - 보조 강조 */
-  --color-dancheong-red: #9B2C22;/* 단청 적색 - 주요 강조/버튼 */
-  --color-dancheong-red-dark: #7A211A;
-  --color-ochre: #C98A3D;        /* 오방색 황토 - 포인트 라인 */
-  --color-wood: #6B4A32;         /* 짙은 나무색 - 헤더/카드 테두리 */
-
-  /* 폰트 */
-  --font-display: 'Gowun Batang', serif;
-  --font-body: 'Noto Serif KR', serif;
-  --font-ui: 'Noto Sans KR', sans-serif;
-
-  /* 레이아웃 */
-  --radius-card: 6px;
-  --shadow-wood: 0 3px 0 rgba(43, 33, 24, 0.25);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html, body {
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  background-color: var(--color-hanji);
-  background-image:
-    radial-gradient(rgba(107, 74, 50, 0.05) 1px, transparent 1px);
-  background-size: 3px 3px;
-  color: var(--color-ink);
-  font-family: var(--font-body);
-  min-height: 100vh;
-  padding-bottom: 120px; /* 하단 고정 주문 바 공간 확보 */
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-/* =========================================================
-   현판(懸板) 헤더
-   ========================================================= */
-.signboard {
-  background: var(--color-wood);
-  color: var(--color-hanji);
-  text-align: center;
-  padding: 2.5rem 1.5rem 2rem;
-  position: relative;
-  border-bottom: 6px solid var(--color-dancheong-red);
-  box-shadow: var(--shadow-wood);
-}
-
-.signboard__rope {
-  width: 2px;
-  height: 28px;
-  background: var(--color-ochre);
-  margin: 0 auto 0.75rem;
-}
-
-.signboard__title {
-  font-family: var(--font-display);
-  font-size: clamp(2.6rem, 8vw, 3.6rem);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  margin: 0;
-}
-
-.signboard__subtitle {
-  font-family: var(--font-ui);
-  font-size: 1.15rem;
-  color: var(--color-hanji-dark);
-  margin: 0.6rem 0 0;
-  letter-spacing: 0.15em;
-}
-
-/* =========================================================
-   메뉴 목록
-   ========================================================= */
-.menu-hall {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 2rem 1.25rem 1rem;
-}
-
-.menu-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1.1rem;
-}
-
-.menu-card {
-  background: #FFFDF6;
-  border: 1px solid var(--color-hanji-dark);
-  border-left: 8px solid var(--color-wood);
-  border-radius: var(--radius-card);
-  padding: 1.3rem 1.4rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  box-shadow: 0 2px 6px rgba(43, 33, 24, 0.08);
-}
-
-.menu-card{
-    position:relative;
-}
-
-.soldout-badge{
-
-    position:absolute;
-    top:10px;
-    right:10px;
-
-    background:#d32f2f;
-    color:white;
-
-    padding:5px 10px;
-
-    border-radius:6px;
-
-    font-size:14px;
-    font-weight:bold;
-}
-
-.menu-card.soldout{
-    opacity:0.3;
-}
-
-.menu-card.soldout .stepper-btn{
-    pointer-events:none;
-}
-
-.menu-card__badge {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-dancheong-red);
-  flex-shrink: 0;
-}
-
-.menu-card__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.menu-card__name {
-  font-family: var(--font-display);
-  font-size: clamp(1.5rem, 5vw, 1.9rem);
-  font-weight: 700;
-  margin: 0 0 0.35rem;
-  color: var(--color-ink);
-}
-
-.menu-card__price {
-  font-family: var(--font-ui);
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-dancheong-red);
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.price-unit {
-  font-size: 1rem;
-  margin-left: 0.15rem;
-  color: var(--color-ink);
-  font-weight: 500;
-}
-
-/* 수량 조절 */
-.menu-card__stepper {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-shrink: 0;
-}
-
-.stepper-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 2px solid var(--color-wood);
-  background: var(--color-hanji);
-  color: var(--color-wood);
-  font-size: 1.4rem;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transition: background-color 0.15s ease, transform 0.1s ease;
-}
-
-.stepper-btn:hover {
-  background: var(--color-hanji-dark);
-}
-
-.stepper-btn:active {
-  transform: scale(0.92);
-}
-
-.stepper-btn:focus-visible,
-.stamp-button:focus-visible,
-.receipt__close:focus-visible {
-  outline: 3px solid var(--color-pine);
-  outline-offset: 2px;
-}
-
-.stepper-qty {
-  min-width: 2ch;
-  text-align: center;
-  font-family: var(--font-ui);
-  font-size: 1.4rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-/* =========================================================
-   하단 주문 바
-   ========================================================= */
-.order-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--color-wood);
-  border-top: 4px solid var(--color-dancheong-red);
-  padding: 1rem 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.order-bar__total {
-  color: var(--color-hanji);
-  font-family: var(--font-ui);
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-}
-
-.order-bar__label {
-  font-size: 1.05rem;
-  color: var(--color-hanji-dark);
-}
-
-.order-bar__amount {
-  font-size: 1.8rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.order-bar__unit {
-  font-size: 1.05rem;
-}
-
-.stamp-button {
-  background: var(--color-dancheong-red);
-  color: var(--color-hanji);
-  border: none;
-  border-radius: 8px;
-  padding: 1rem 1.8rem;
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-  box-shadow: 0 3px 0 var(--color-dancheong-red-dark);
-  transition: transform 0.08s ease, box-shadow 0.08s ease;
-}
-
-.stamp-button:hover {
-  background: var(--color-dancheong-red-dark);
-}
-
-.stamp-button:active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 var(--color-dancheong-red-dark);
-}
-
-.stamp-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* =========================================================
-   주문서(영수증) 오버레이
-   ========================================================= */
-.receipt-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(43, 33, 24, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  z-index: 10;
-}
-
-.receipt-overlay[hidden] {
-  display: none;
-}
-
-.receipt {
-  background: #FFFDF6;
-  width: 100%;
-  max-width: 380px;
-  padding: 2rem 1.75rem 1.75rem;
-  border-radius: 4px;
-  position: relative;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
-  text-align: center;
-}
-
-.receipt__eyebrow {
-  font-family: var(--font-ui);
-  font-size: 0.95rem;
-  letter-spacing: 0.3em;
-  color: var(--color-ochre);
-  margin: 0 0 0.4rem;
-}
-
-.receipt__title {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  margin: 0 0 1.2rem;
-  color: var(--color-ink);
-}
-
-.receipt__items {
-  list-style: none;
-  margin: 0 0 1rem;
-  padding: 0;
-  text-align: left;
-  font-family: var(--font-ui);
-  font-size: 1.05rem;
-  border-top: 1px dashed var(--color-hanji-dark);
-  border-bottom: 1px dashed var(--color-hanji-dark);
-  padding: 0.8rem 0;
-}
-
-.receipt__items li {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.25rem 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.receipt__total {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-ui);
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-bottom: 1.5rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 시그니처 요소: 도장(印) 스탬프 애니메이션 */
-.receipt__seal {
-  width: 84px;
-  height: 84px;
-  border: 4px solid var(--color-dancheong-red);
-  border-radius: 8px;
-  margin: 0 auto 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: scale(1.6) rotate(-18deg);
-  opacity: 0;
-  color: var(--color-dancheong-red);
-  font-family: var(--font-display);
-  font-size: 2.2rem;
-  font-weight: 700;
-}
-
-.receipt-overlay.is-visible .receipt__seal {
-  animation: stamp-down 0.35s ease-out 0.15s forwards;
-}
-
-@keyframes stamp-down {
-  0% {
-    transform: scale(1.6) rotate(-18deg);
-    opacity: 0;
+  :root {
+    --bg-color: #F8F9FA;
+    --card-bg: #FFFFFF;
+    --text-main: #212529;
+    --text-muted: #6C757D;
+    --primary: #E05A33;
+    --primary-hover: #C24A26;
+    --border: #DEE2E6;
+    --radius: 12px;
   }
-  60% {
-    transform: scale(0.92) rotate(-8deg);
-    opacity: 1;
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0; font-family: 'Noto Sans KR', sans-serif;
+    background-color: var(--bg-color); color: var(--text-main);
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
   }
-  100% {
-    transform: scale(1) rotate(-8deg);
-    opacity: 1;
+  
+  /* Top Bar */
+  .top-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 15px 30px; background: var(--card-bg); border-bottom: 1px solid var(--border);
   }
-}
+  .top-brand { display: flex; align-items: center; gap: 20px; }
+  .logo { font-size: 24px; font-weight: 800; color: var(--primary); letter-spacing: -0.5px; }
+  .table-info { font-size: 18px; font-weight: 700; color: var(--text-main); border-left: 2px solid var(--border); padding-left: 20px;}
+  .top-status { display: flex; align-items: center; gap: 15px; color: var(--text-muted); font-size: 14px;}
+  .lang-select { border: 1px solid var(--border); border-radius: 20px; padding: 5px 15px; background: #fff; font-weight: bold;}
 
-.receipt__close {
-  background: var(--color-wood);
-  color: var(--color-hanji);
-  border: none;
-  border-radius: 6px;
-  padding: 0.75rem 1.5rem;
-  font-family: var(--font-ui);
-  font-size: 1.1rem;
-  font-weight: 700;
-  cursor: pointer;
-}
+  /* Category Bar */
+  .category-bar {
+    background: var(--primary); padding: 10px 30px; display: flex; align-items: center; gap: 15px;
+    overflow-x: auto; white-space: nowrap;
+  }
+  .category-btn {
+    background: transparent; border: none; color: rgba(255,255,255,0.7);
+    font-size: 18px; padding: 10px 20px; border-radius: 30px;
+    cursor: pointer; font-weight: 700; transition: all 0.2s;
+  }
+  .category-btn.active {
+    background: #FFFFFF; color: var(--primary);
+  }
 
-.receipt__close:hover {
-  background: var(--color-ink);
-}
-
-/* =========================================================
-   반응형 / 접근성
-   ========================================================= */
-@media (max-width: 420px) {
+  /* Main Area */
+  .main-area {
+    flex: 1; padding: 30px; overflow-y: auto;
+  }
+  .page-header {
+    display: flex; align-items: center; margin-bottom: 25px; gap: 15px;
+  }
+  .page-title {
+    font-size: 24px; font-weight: 800; margin: 0;
+  }
+  .page-subtitle {
+    font-size: 16px; color: var(--text-muted); border-left: 2px solid var(--border); padding-left: 15px;
+  }
+  
+  .menu-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 30px;
+  }
   .menu-card {
-    flex-wrap: wrap;
+    background: var(--card-bg); border-radius: var(--radius); padding: 20px;
+    text-align: center; cursor: pointer; position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid transparent;
   }
-  .menu-card__stepper {
-    width: 100%;
-    justify-content: flex-end;
+  .menu-card:active { transform: scale(0.98); }
+  .menu-card:hover { border-color: var(--primary); }
+  .menu-card.soldout { opacity: 0.5; pointer-events: none; }
+  .soldout-badge {
+    position: absolute; top: 15px; right: 15px; background: #D32F2F; color: #FFF;
+    padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; z-index: 2;
   }
-}
+  .menu-img {
+    width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; margin-bottom: 15px;
+    background-color: #2b3956; /* 레퍼런스 스타일 네이비 배경 */
+  }
+  .menu-name { font-size: 22px; font-weight: 700; margin: 0 0 10px; color: var(--text-main);}
+  .menu-price { font-size: 20px; font-weight: 800; color: var(--text-main); margin: 0; }
+  
+  .qty-badge {
+    position: absolute; top: -10px; right: -10px; background: var(--primary); color: white;
+    width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: bold; box-shadow: 0 2px 6px rgba(0,0,0,0.3); opacity: 0; transform: scale(0.5); transition: all 0.2s;
+  }
+  .qty-badge.show { opacity: 1; transform: scale(1); }
 
-@media (prefers-reduced-motion: reduce) {
-  .receipt-overlay.is-visible .receipt__seal {
-    animation: none;
-    opacity: 1;
-    transform: scale(1) rotate(-8deg);
+  /* Bottom Bar */
+  .bottom-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 15px 30px; background: var(--card-bg); border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
   }
-  .stepper-btn,
-  .stamp-button {
-    transition: none;
+  .bottom-actions {
+    display: flex; gap: 20px;
   }
-}
+  .action-btn {
+    background: transparent; border: none; color: var(--text-main);
+    font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+    cursor: pointer; padding: 10px 15px; border-radius: 8px; transition: background 0.2s;
+  }
+  .action-btn:hover { background: #f1f3f5; }
+  
+  .cart-btn {
+    background: var(--primary); color: #FFF; border: none; border-radius: 30px;
+    padding: 15px 40px; font-size: 22px; font-weight: 800; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; transition: background 0.2s; box-shadow: 0 4px 12px rgba(74, 101, 240, 0.4);
+  }
+  .cart-btn:hover { background: var(--primary-hover); }
+  .cart-badge {
+    background: white; color: var(--primary); width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold;
+  }
 
+  /* Sidebar Cart Modal */
+  .cart-sidebar-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5); z-index: 1000;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+  .cart-sidebar-overlay.show { opacity: 1; pointer-events: auto; }
+  
+  .cart-sidebar {
+    position: fixed; top: 0; right: -400px; width: 400px; height: 100%;
+    background: var(--card-bg); box-shadow: -4px 0 15px rgba(0,0,0,0.1);
+    display: flex; flex-direction: column; transition: right 0.3s; z-index: 1001;
+  }
+  .cart-sidebar.show { right: 0; }
+  
+  .cart-header {
+    padding: 25px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;
+    font-size: 24px; font-weight: 800;
+  }
+  .close-btn { background: transparent; border: none; font-size: 28px; cursor: pointer; color: var(--text-muted); }
+  
+  .cart-items { flex: 1; overflow-y: auto; padding: 25px; }
+  .cart-item {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+  }
+  .cart-item-info { flex: 1; }
+  .cart-item-name { font-size: 18px; font-weight: 700; margin-bottom: 5px; }
+  .cart-item-price { font-size: 16px; color: var(--text-muted); }
+  .cart-item-actions { display: flex; align-items: center; gap: 12px; }
+  .stepper-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: #FFF;
+    font-size: 20px; color: var(--text-main); display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .stepper-qty { font-size: 18px; font-weight: bold; width: 24px; text-align: center; }
+  
+  .cart-footer { padding: 25px; border-top: 1px solid var(--border); background: #F8F9FA; }
+  .cart-total { display: flex; justify-content: space-between; font-size: 24px; font-weight: 800; margin-bottom: 20px; }
+  .order-btn {
+    width: 100%; padding: 20px; background: var(--primary); color: #FFF; border: none; border-radius: 12px;
+    font-size: 22px; font-weight: 800; cursor: pointer;
+  }
+  
+  /* Toast */
+  .toast {
+    position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
+    background: rgba(33, 37, 41, 0.9); color: white; padding: 15px 30px;
+    border-radius: 30px; font-size: 18px; font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 2000;
+  }
+  .toast.show { opacity: 1; }
+
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 
-  <!-- 상단 현판(懸板) 헤더 -->
-  <header class="signboard">
-    <div class="signboard__rope" aria-hidden="true"></div>
-    <h1 class="signboard__title">酒幕 주막</h1>
-    <p class="signboard__subtitle">오늘의 상차림</p>
+  <!-- Toast -->
+  <div id="toast" class="toast">알림</div>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="top-brand">
+      <div class="logo">BOKA</div>
+      <div class="table-info">홀 01</div>
+    </div>
+    <div class="top-status">
+      <span>장비번호 : ABC12345</span>
+      <div class="lang-select">🇰🇷 KOR ⌄</div>
+    </div>
   </header>
 
-  <main class="menu-hall">
+  <!-- Category Bar -->
+  <nav class="category-bar">
+    <button class="category-btn active" data-category="all">오늘의 메뉴</button>
+    <button class="category-btn" data-category="food">세트 메뉴</button>
+    <button class="category-btn" data-category="food">식사류</button>
+    <button class="category-btn" data-category="food">안주류</button>
+    <button class="category-btn" data-category="drink">주류</button>
+  </nav>
 
-    <!-- 메뉴 목록 -->
-    <ul class="menu-list" id="menu-list">
-      <!-- JS가 menuData 기반으로 카드를 채워 넣습니다 -->
-    </ul>
-
-    <template id="menu-card-template">
-      <li class="menu-card" data-menu-id="">
-        <div class="soldout-badge" hidden>품절</div>
-
-        <div class="menu-card__badge" aria-hidden="true"></div>
-        <div class="menu-card__info">
-          <p class="menu-card__name"></p>
-          <p class="menu-card__price">
-            <span class="price-amount"></span>
-            <span class="price-unit">원</span>
-          </p>
-        </div>
-
-        <div class="menu-card__stepper" role="group">
-          <button type="button" class="stepper-btn stepper-btn--minus" aria-label="수량 감소">－</button>
-          <span class="stepper-qty" aria-live="polite">0</span>
-          <button type="button" class="stepper-btn stepper-btn--plus" aria-label="수량 증가">＋</button>
-        </div>
-      </li>
-    </template>
-
+  <!-- Main Area -->
+  <main class="main-area">
+    <div class="page-header">
+      <h2 class="page-title" id="page-title">오늘의 메뉴</h2>
+      <span class="page-subtitle">30년 경력의 셰프가 로봇과 함께 선보이는 완벽한 요리</span>
+    </div>
+    <div class="menu-grid" id="menu-grid">
+      <!-- JS 렌더링 -->
+    </div>
   </main>
 
-  <!-- 하단 주문 바 -->
-  <footer class="order-bar">
-    <div class="order-bar__total">
-      <span class="order-bar__label">총 금액</span>
-      <span class="order-bar__amount" id="total-amount">0</span>
-      <span class="order-bar__unit">원</span>
+  <!-- Bottom Bar -->
+  <footer class="bottom-bar">
+    <div class="bottom-actions">
+      <button class="action-btn" onclick="showToast('안내사항 창입니다.')">📢 안내사항</button>
+      <button class="action-btn" onclick="showOrderHistory()">🧾 주문내역</button>
+      <button class="action-btn" onclick="showToast('🔔 직원을 호출했습니다.')">🔔 직원호출</button>
     </div>
-    <button type="button" id="order-button" class="stamp-button">
-      <span class="stamp-button__text">주문하기</span>
+    <button class="cart-btn" onclick="toggleCart()">
+      🛒 장바구니 <div class="cart-badge" id="cart-badge">0</div>
     </button>
   </footer>
 
-  <!-- 주문 상태 안내 (스크린리더용) -->
-  <div id="order-status" class="sr-only" role="status" aria-live="assertive"></div>
-
-  <!-- 주문 완료 영수증(주문서) 오버레이 -->
-  <div id="receipt-overlay" class="receipt-overlay" hidden>
-    <div class="receipt" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
-      <p class="receipt__eyebrow">주문서</p>
-      <h2 id="receipt-title" class="receipt__title">주문이 접수되었습니다</h2>
-      <ul class="receipt__items" id="receipt-items"></ul>
-      <div class="receipt__total">
+  <!-- Cart Sidebar -->
+  <div class="cart-sidebar-overlay" id="cart-overlay" onclick="toggleCart()"></div>
+  <aside class="cart-sidebar" id="cart-sidebar">
+    <div class="cart-header">
+      주문서
+      <button class="close-btn" onclick="toggleCart()">×</button>
+    </div>
+    <div class="cart-items" id="cart-items">
+      <!-- JS 렌더링 -->
+    </div>
+    <div class="cart-footer">
+      <div class="cart-total">
         <span>합계</span>
-        <span id="receipt-total">0원</span>
+        <span id="total-amount">0원</span>
       </div>
-      <div class="receipt__seal" aria-hidden="true">
-        <span class="receipt__seal-mark">接</span>
-      </div>
-      <button type="button" id="receipt-close" class="receipt__close">확인</button>
+      <button class="order-btn" id="order-button">주문하기</button>
+    </div>
+  </aside>
+
+  <!-- 주문내역 팝업 -->
+  <div id="history-popup" style="position:fixed; bottom:80px; left:30px; background:var(--card-bg); padding:20px; border-radius:12px; width:400px; max-width:90%; box-shadow:0 10px 30px rgba(0,0,0,0.15); z-index:1500; opacity:0; pointer-events:none; transition:opacity 0.2s, transform 0.2s; transform:translateY(10px);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="margin:0; font-size:20px; font-weight:800;">주문 내역</h2>
+      <button onclick="closeOrderHistory()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-main);">×</button>
+    </div>
+    <div id="history-items" style="max-height:350px; overflow-y:auto;">
+      <!-- JS 렌더링 -->
     </div>
   </div>
 
-  <script>
-/**
- * ============================================================
- * 백엔드 연동 설정
- * ------------------------------------------------------------
- * DB / 주문 저장·조회 로직은 이미 백엔드에 구현되어 있다고 하셨으므로,
- * 아래 CONFIG 부분의 엔드포인트와 요청/응답 형식만 실제 API에 맞게
- * 수정하시면 됩니다.
- *
- * 기대하는 백엔드 계약(contract) 예시:
- *
- *   POST {ORDER_ENDPOINT}
- *   요청 body:
- *   {
- *     "items": [
- *       { "menuId": "menu1", "name": "볶음밥", "price": 15000, "qty": 2 },
- *       { "menuId": "menu3", "name": "막걸리", "price": 3000,  "qty": 1 }
- *     ],
- *     "totalPrice": 33000
- *   }
- *
- *   응답 body (성공 시, 예시):
- *   {
- *     "orderId": 123,
- *     "status": "접수완료"
- *   }
- *
- * 응답 형식이 다르다면 handleOrderSuccess() 안에서 파싱 부분만
- * 바꿔주시면 나머지 UI 로직은 그대로 재사용할 수 있습니다.
- * ============================================================
- */
-const CONFIG = {
-  ORDER_ENDPOINT: "/api/orders", // TODO: 실제 주문 저장 API 경로로 교체
-};
+<script>
+const CONFIG = { ORDER_ENDPOINT: "/api/orders" };
 
-// 메뉴 데이터 (메뉴 ID는 백엔드 DB의 메뉴 식별자와 맞춰주세요)
+// DB의 부침개 메뉴 연동을 위해 name을 '부침개'로 세팅
 const menuData = [
-  { id: "menu1", name: "볶음밥", price: 15000, soldout:false },
-  { id: "menu2", name: "파전", price: 10000, soldout:false },
-  { id: "menu3", name: "막걸리", price: 3000, soldout:false },
+  { id: "menu1", name: "볶음밥", price: 15000, category: "food", image: "/static/images/fried_rice.png", soldout: false },
+  { id: "menu2", name: "부침개", price: 12000, category: "food", image: "/static/images/buchimgae.png", soldout: false },
+  { id: "menu3", name: "막걸리", price: 5000, category: "drink", image: "/static/images/makgeolli.png", soldout: false },
 ];
 
-// 메뉴별 현재 수량 상태
-const quantities = {};
-menuData.forEach((item) => (quantities[item.id] = 0));
+let quantities = {};
+menuData.forEach(item => quantities[item.id] = 0);
+let currentCategory = "all";
+let orderHistory = []; // 주문 완료된 내역 저장용
 
-const menuListEl = document.getElementById("menu-list");
-const cardTemplate = document.getElementById("menu-card-template");
+// DOM
+const menuGridEl = document.getElementById("menu-grid");
+const cartItemsEl = document.getElementById("cart-items");
 const totalAmountEl = document.getElementById("total-amount");
 const orderButton = document.getElementById("order-button");
-const orderStatusEl = document.getElementById("order-status");
-const receiptOverlay = document.getElementById("receipt-overlay");
-const receiptItemsEl = document.getElementById("receipt-items");
-const receiptTotalEl = document.getElementById("receipt-total");
-const receiptCloseBtn = document.getElementById("receipt-close");
+const toastEl = document.getElementById("toast");
+const cartOverlay = document.getElementById("cart-overlay");
+const cartSidebar = document.getElementById("cart-sidebar");
+const cartBadge = document.getElementById("cart-badge");
 
-function formatWon(amount) {
-  return amount.toLocaleString("ko-KR");
+function showToast(message) {
+  toastEl.textContent = message;
+  toastEl.classList.add("show");
+  setTimeout(() => toastEl.classList.remove("show"), 2500);
 }
 
-/** 메뉴 카드를 화면에 렌더링 */
+function formatWon(num) {
+  return num.toLocaleString("ko-KR");
+}
+
+function showOrderHistory() {
+  const historyItemsEl = document.getElementById("history-items");
+  if (orderHistory.length === 0) {
+    historyItemsEl.innerHTML = "<div style='text-align:center; padding:40px; color:#888;'>주문하신 내역이 없습니다.</div>";
+  } else {
+    historyItemsEl.innerHTML = "";
+    orderHistory.slice().reverse().forEach((order, idx) => {
+      const orderDiv = document.createElement("div");
+      orderDiv.style.marginBottom = "15px";
+      orderDiv.style.padding = "15px";
+      orderDiv.style.background = "#f8f9fa";
+      orderDiv.style.borderRadius = "8px";
+      
+      let itemsHtml = order.items.map(i => `<div style="display:flex; justify-content:space-between; margin-bottom:5px; font-size:15px; color:var(--text-main);"><span>${i.name} x ${i.qty}</span><span>${formatWon(i.price * i.qty)}원</span></div>`).join("");
+      
+      orderDiv.innerHTML = `
+        <div style="font-weight:bold; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:10px; font-size:16px;">주문 #${orderHistory.length - idx} <span style="float:right; color:var(--primary);">${formatWon(order.totalPrice)}원</span></div>
+        ${itemsHtml}
+      `;
+      historyItemsEl.appendChild(orderDiv);
+    });
+  }
+  const popup = document.getElementById("history-popup");
+  popup.style.opacity = "1";
+  popup.style.pointerEvents = "auto";
+  popup.style.transform = "translateY(0)";
+}
+
+function closeOrderHistory() {
+  const popup = document.getElementById("history-popup");
+  popup.style.opacity = "0";
+  popup.style.pointerEvents = "none";
+  popup.style.transform = "translateY(10px)";
+}
+
 function renderMenu() {
-
-  menuData.forEach((item) => {
-
-    const node = cardTemplate.content.cloneNode(true);
-
-    const li = node.querySelector(".menu-card");
-
-    li.dataset.menuId = item.id;
-
-
-    // ⭐ 품절 처리
-    if(item.soldout){
-
-        li.classList.add("soldout");
-
-        const badge = li.querySelector(".soldout-badge");
-        badge.hidden = false;
-
-    }
-
-
-    node.querySelector(".menu-card__name").textContent = item.name;
-
-    node.querySelector(".price-amount").textContent =
-        formatWon(item.price);
-
-
-    const qtyLabel = node.querySelector(".stepper-qty");
-
-    const minusBtn = node.querySelector(".stepper-btn--minus");
-
-    const plusBtn = node.querySelector(".stepper-btn--plus");
-
-
-    minusBtn.addEventListener(
-        "click",
-        () => updateQty(item.id,-1,qtyLabel)
-    );
-
-    plusBtn.addEventListener(
-        "click",
-        () => updateQty(item.id,1,qtyLabel)
-    );
-
-
-    menuListEl.appendChild(node);
-
+  menuGridEl.innerHTML = "";
+  const filtered = currentCategory === "all" ? menuData : menuData.filter(m => m.category === currentCategory);
+  
+  filtered.forEach(item => {
+    const qty = quantities[item.id];
+    const card = document.createElement("div");
+    card.className = `menu-card ${item.soldout ? 'soldout' : ''}`;
+    card.onclick = () => { if(!item.soldout) addOne(item.id); };
+    
+    card.innerHTML = `
+      ${item.soldout ? '<div class="soldout-badge">품절</div>' : ''}
+      <div class="qty-badge ${qty > 0 ? 'show' : ''}" id="badge-${item.id}">${qty}</div>
+      <img src="${item.image}" alt="${item.name}" class="menu-img">
+      <h3 class="menu-name">${item.name}</h3>
+      <p class="menu-price">${formatWon(item.price)}원</p>
+    `;
+    menuGridEl.appendChild(card);
   });
-
 }
 
-/** 수량 변경 및 총액 갱신 */
-function updateQty(menuId, delta, qtyLabel) {
+function addOne(id) {
+  quantities[id]++;
+  renderMenu();
+  renderCart();
+  // Animation effect on card could be added here
+}
+
+function updateQty(menuId, delta) {
   const next = Math.max(0, quantities[menuId] + delta);
   quantities[menuId] = next;
-  qtyLabel.textContent = next;
-  updateTotal();
+  renderMenu();
+  renderCart();
 }
 
-function updateTotal() {
-  const total = menuData.reduce(
-    (sum, item) => sum + item.price * quantities[item.id],
-    0
-  );
-  totalAmountEl.textContent = formatWon(total);
-  return total;
+function renderCart() {
+  cartItemsEl.innerHTML = "";
+  let total = 0;
+  let totalQty = 0;
+  
+  menuData.forEach(item => {
+    const qty = quantities[item.id];
+    if (qty > 0) {
+      total += item.price * qty;
+      totalQty += qty;
+      const cartItem = document.createElement("div");
+      cartItem.className = "cart-item";
+      cartItem.innerHTML = `
+        <div class="cart-item-info">
+          <div class="cart-item-name">${item.name}</div>
+          <div class="cart-item-price">${formatWon(item.price * qty)}원</div>
+        </div>
+        <div class="cart-item-actions">
+          <button class="stepper-btn" onclick="updateQty('${item.id}', -1)">-</button>
+          <span class="stepper-qty">${qty}</span>
+          <button class="stepper-btn" onclick="updateQty('${item.id}', 1)">+</button>
+        </div>
+      `;
+      cartItemsEl.appendChild(cartItem);
+    }
+  });
+  
+  if (totalQty === 0) {
+    cartItemsEl.innerHTML = "<div style='color:#888; text-align:center; margin-top:50px;'>장바구니가 비어있습니다.</div>";
+  }
+  
+  totalAmountEl.textContent = formatWon(total) + "원";
+  cartBadge.textContent = totalQty;
 }
 
-/** 현재 선택된 항목들을 백엔드 전송용 배열로 변환 */
-function buildOrderPayload() {
-  const items = menuData
-    .filter((item) => quantities[item.id] > 0)
-    .map((item) => ({
-      menuId: item.id,
-      name: item.name,
-      price: item.price,
-      qty: quantities[item.id],
-    }));
-
-  const totalPrice = items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  return { items, totalPrice };
+function toggleCart() {
+  cartOverlay.classList.toggle("show");
+  cartSidebar.classList.toggle("show");
 }
 
-/** 주문하기 버튼 클릭 */
-async function handleOrder() {
-  const payload = buildOrderPayload();
+document.querySelectorAll(".category-btn").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    document.querySelectorAll(".category-btn").forEach(b => b.classList.remove("active"));
+    e.target.classList.add("active");
+    currentCategory = e.target.dataset.category;
+    document.getElementById("page-title").textContent = e.target.textContent;
+    renderMenu();
+  });
+});
 
-  if (payload.items.length === 0) {
-    orderStatusEl.textContent = "메뉴를 하나 이상 선택해 주세요.";
+orderButton.addEventListener("click", async () => {
+  const items = menuData.filter(i => quantities[i.id] > 0).map(i => ({
+    menuId: i.id, name: i.name, price: i.price, qty: quantities[i.id]
+  }));
+  
+  if (items.length === 0) {
+    showToast("장바구니가 비어있습니다.");
     return;
   }
 
+  const totalPrice = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const payload = { items, totalPrice };
+
   orderButton.disabled = true;
-  orderButton.querySelector(".stamp-button__text").textContent = "주문 접수 중...";
+  orderButton.textContent = "접수 중...";
 
   try {
     const response = await fetch(CONFIG.ORDER_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
     });
-
-    if (!response.ok) {
-      throw new Error(`서버 응답 오류: ${response.status}`);
-    }
-
+    
+    if (!response.ok) throw new Error("Server Error");
     const result = await response.json();
 
-    // ⭐ 재고 부족 검사
     if (result.status === "error") {
-      orderStatusEl.textContent = result.message;
-      alert(result.message);
-      // ⭐ 주문 후 재고 다시 확인
+      showToast(result.message);
       loadInventory();
       return;
     }
 
-    // ⭐ 정상 주문일 때만 실행
-    handleOrderSuccess(payload, result);
-    await loadInventory();
+    // 주문 성공 시 내역에 추가
+    orderHistory.push({
+      items: [...payload.items],
+      totalPrice: payload.totalPrice
+    });
+
+    showToast(`✅ 주문이 접수되었습니다. (번호: ${result.orderId || '-'})`);
+    Object.keys(quantities).forEach(k => quantities[k] = 0);
+    toggleCart();
+    renderMenu();
+    renderCart();
+    loadInventory();
 
   } catch (error) {
-    console.error("주문 전송 실패:", error);
-    orderStatusEl.textContent =
-      "주문 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+    console.error(error);
+    showToast("주문 접수에 실패했습니다.");
   } finally {
     orderButton.disabled = false;
-    orderButton.querySelector(".stamp-button__text").textContent = "주문하기";
+    orderButton.textContent = "주문하기";
   }
-}
-
-async function loadInventory(){
-
-    const response = await fetch("/api/inventory");
-
-    const inventory = await response.json();
-
-
-    inventory.forEach(item=>{
-
-        const card = document.querySelector(
-            `[data-menu-id="${item.id}"]`
-        );
-
-
-        if(!card) return;
-
-
-        if(item.stock === 0){
-
-            card.classList.add("soldout");
-
-            card.querySelector(".soldout-badge").hidden=false;
-
-
-            card.querySelectorAll(".stepper-btn")
-                .forEach(btn=>{
-                    btn.disabled=true;
-                });
-
-        }
-
-    });
-}
-
-/** 주문 성공 시 영수증(주문서) 표시 + 상태 초기화 */
-function handleOrderSuccess(payload, result) {
-  receiptItemsEl.innerHTML = "";
-  payload.items.forEach((item) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<span>${item.name} x ${item.qty}</span><span>${formatWon(
-      item.price * item.qty
-    )}원</span>`;
-    receiptItemsEl.appendChild(li);
-  });
-  receiptTotalEl.textContent = `${formatWon(payload.totalPrice)}원`;
-
-  receiptOverlay.hidden = false;
-  requestAnimationFrame(() => receiptOverlay.classList.add("is-visible"));
-
-  orderStatusEl.textContent = `주문이 접수되었습니다. (주문번호: ${
-    result && result.orderId ? result.orderId : "확인 중"
-  })`;
-
-  // 수량 및 총액 초기화
-  menuData.forEach((item) => (quantities[item.id] = 0));
-  document
-    .querySelectorAll(".stepper-qty")
-    .forEach((el) => (el.textContent = "0"));
-  updateTotal();
-
-  loadInventory();
-}
-
-function closeReceipt() {
-  receiptOverlay.classList.remove("is-visible");
-  receiptOverlay.hidden = true;
-}
-
-// 이벤트 바인딩
-orderButton.addEventListener("click", handleOrder);
-receiptCloseBtn.addEventListener("click", closeReceipt);
-receiptOverlay.addEventListener("click", (e) => {
-  if (e.target === receiptOverlay) closeReceipt();
 });
 
-// 초기 렌더링
-renderMenu();
-updateTotal();
-loadInventory();
+async function loadInventory(){
+    const response = await fetch("/api/inventory");
+    const inventory = await response.json();
 
-  </script>
+    inventory.forEach(item=>{
+        const menu = menuData.find(m => m.id === item.id);
+        if(menu) {
+            menu.soldout = item.stock === 0;
+            if(menu.soldout && quantities[item.id] > 0) quantities[item.id] = 0;
+        }
+    });
+    renderMenu();
+    renderCart();
+}
+
+loadInventory().then(() => {
+    renderMenu();
+    renderCart();
+});
+</script>
 </body>
 </html>

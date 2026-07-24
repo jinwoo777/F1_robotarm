@@ -56,41 +56,41 @@ def admin():
 
 @app.route("/update_stock", methods=["POST"])
 def update_stock():
-
-    menu_name = request.form["menu_name"]
-
+    ingredient_name = request.form["ingredient_name"]
     stock = int(request.form["stock"])
-
-    max_stock = int(request.form["max_stock"])
-
-    update_inventory(
-        menu_name,
-        stock,
-        max_stock
-    )
-
+    
+    update_inventory(ingredient_name, stock)
+    
     return redirect("/admin")
 
 @app.route("/api/inventory")
 def inventory_api():
-
+    from database import RECIPES
+    
     inventory = get_inventory()
+    stock_dict = {item[0]: item[1] for item in inventory}
 
     menu_ids = {
-        "볶음밥":"menu1",
-        "파전":"menu2",
-        "막걸리":"menu3"
+        "볶음밥": "menu1",
+        "부침개": "menu2",
+        "막걸리": "menu3"
     }
 
-    result=[]
-
-    for item in inventory:
-        result.append({
-            "id": menu_ids[item[0]],
-            "name": item[0],
-            "stock": item[1],
-            "max_stock": item[2]
-        })
+    result = []
+    for menu_name, m_id in menu_ids.items():
+        if menu_name in RECIPES:
+            max_portions = float('inf')
+            for ing_name, req_amount in RECIPES[menu_name]:
+                ing_stock = stock_dict.get(ing_name, 0)
+                portions = ing_stock // req_amount
+                if portions < max_portions:
+                    max_portions = portions
+            
+            result.append({
+                "id": m_id,
+                "name": menu_name,
+                "stock": max_portions if max_portions != float('inf') else 0
+            })
 
     return jsonify(result)
 
