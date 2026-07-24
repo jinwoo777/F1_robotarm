@@ -1,0 +1,27 @@
+# default 설정을 상속한 뒤 실제 장비/자산 값만 덮어씁니다.
+base_config: default.yaml
+
+pan:
+  stl_path: /absolute/path/to/your_pan.stl
+  stl_scale: 0.001  # STL 좌표가 mm일 때의 예시일 뿐 자동 판정값이 아닙니다.
+  # teaching transform을 authoritative P0로 쓸 때 default의 중복 pose를 비웁니다.
+  initial_pose: null
+
+trajectory:
+  # P0는 아래 teaching transform에서 유도됩니다.
+  start_position_m: null
+  start_rpy_rad: null
+
+robot:
+  enabled: true
+  required: false
+  urdf_path: /absolute/path/to/m0609.urdf
+  base_link: base_link
+  tcp_link: tool0
+  q_teach: [null, null, null, null, null, null]
+  T_base_tcp_teach: null  # 4x4 homogeneous transform
+  T_tcp_pan: null         # 4x4 homogeneous transform
+  T_base_wok: null        # 4x4 homogeneous transform
+  joint_velocity_limits: null
+  joint_acceleration_limits: null
+  collision_check: false
