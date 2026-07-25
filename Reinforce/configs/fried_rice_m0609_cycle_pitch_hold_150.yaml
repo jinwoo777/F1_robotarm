@@ -1,0 +1,10 @@
+base_config: fried_rice_m0609_speed_sweep_150.yaml
+
+# 중간 cycle의 후퇴→재삽입에서 삽입 pitch를 유지하는 조건의 독립 150회 run.
+# 나머지 입자 수(60/90/120개 각 50회), 속도 target(80~90%, 2% 간격),
+# seed와 SAC 설정은 직전 speed sweep과 동일하게 유지한다.
+training:
+  checkpoint_directory: checkpoints/fried_rice_sac_150_m0609_cycle_pitch_hold
+
+logging:
+  output_directory: results/fried_rice_m0609_cycle_pitch_hold_150

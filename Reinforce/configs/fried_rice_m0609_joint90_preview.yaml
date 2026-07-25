@@ -1,0 +1,54 @@
+base_config: fried_rice_fast_150.yaml
+
+# Speed-only offline preview. The velocity limits below are nominal M0609
+# references; acceleration, torque, collision, and the real teaching pose still
+# require controller-side validation before any robot command is allowed.
+trajectory:
+  max_cartesian_velocity: 1.0
+  max_angular_velocity: 3.9269908169872414
+  # These wide derivative gates prevent the pan-only simulator from rejecting
+  # the requested speed experiment. They are not M0609 manufacturer limits.
+  max_cartesian_acceleration: 100.0
+  max_angular_acceleration: 100.0
+  max_cartesian_jerk: 10000.0
+  max_angular_jerk: 10000.0
+  fried_rice:
+    continuous_time_scale: 1.0
+    adaptive_robot_retiming: false
+
+robot:
+  enabled: false
+  required: false
+  nominal_joint_speed_retiming:
+    enabled: true
+    target_fraction: 0.90
+    tcp_offset_m: 0.40
+    # Pan center lies 0.4 m along the configured tool0 +Z direction.
+    tcp_offset_axis: [0.0, 0.0, 1.0]
+    # Assumed offline teaching seed. Replace with the measured M0609 pose before
+    # treating the kinematic result as a real-robot preflight.
+    q_teach_rad:
+      [-1.9392935735280386, -0.2480845207238079, -1.2506058493128482,
+       -0.5490521338106086, 1.6336533475145063, -0.1149857643265979]
+    joint_velocity_limits_rad_s:
+      [2.6179938779914944, 2.6179938779914944, 3.141592653589793,
+       3.9269908169872414, 3.9269908169872414, 3.9269908169872414]
+    joint_position_lower_rad:
+      [-6.283185307179586, -1.6580627893946132, -2.356194490192345,
+       -6.283185307179586, -2.356194490192345, -6.283185307179586]
+    joint_position_upper_rad:
+      [6.283185307179586, 1.6580627893946132, 2.356194490192345,
+       6.283185307179586, 2.356194490192345, 6.283185307179586]
+    tcp_linear_velocity_limit_m_s: 1.0
+    # The manual does not publish a TCP angular cap, so use the slowest nominal
+    # joint speed (J1/J2 = 150 deg/s) as a conservative angular proxy.
+    tcp_angular_velocity_limit_rad_s: 2.6179938779914944
+    minimum_time_scale: 0.05
+    maximum_time_scale: 3.0
+
+training:
+  lift_approach_curriculum:
+    enabled: false
+
+logging:
+  output_directory: results/fried_rice_m0609_joint90_preview

@@ -668,51 +668,57 @@ class ModelBuilder:
             },
         )
 
-        radial_change = proxy.inner_radius_m - proxy.bottom_radius_m
-        vertical_change = proxy.rim_z_m - proxy.bottom_z_m
-        wall_length = math.hypot(radial_change, vertical_change)
-        mid_radius = 0.5 * (proxy.inner_radius_m + proxy.bottom_radius_m)
-        mid_z = 0.5 * (proxy.rim_z_m + proxy.bottom_z_m)
-        tangent_half_length = (
-            proxy.inner_radius_m * math.tan(math.pi / proxy.wall_segments) * proxy.segment_overlap
-        )
+        wall_profile_points = proxy.inner_wall_profile_points()
         for index in range(proxy.wall_segments):
             theta = 2.0 * math.pi * index / proxy.wall_segments
             radial = np.array([math.cos(theta), math.sin(theta), 0.0])
             tangent = np.array([-math.sin(theta), math.cos(theta), 0.0])
-            wall_axis = (
-                np.array(
-                    [
-                        radial_change * math.cos(theta),
-                        radial_change * math.sin(theta),
-                        vertical_change,
-                    ]
+            for radial_index, (start_rz, end_rz) in enumerate(
+                zip(wall_profile_points[:-1], wall_profile_points[1:], strict=True)
+            ):
+                start = radial * float(start_rz[0])
+                start[2] = float(start_rz[1])
+                end = radial * float(end_rz[0])
+                end[2] = float(end_rz[1])
+                wall_delta = end - start
+                wall_length = float(np.linalg.norm(wall_delta))
+                wall_axis = wall_delta / wall_length
+                normal = np.cross(wall_axis, tangent)
+                rotation = np.column_stack((tangent, normal, wall_axis))
+                quaternion = _matrix_to_quaternion(rotation)
+                center = 0.5 * (start + end)
+                if proxy.wall_profile == "circular_arc":
+                    # profile point/chord는 입자가 만나는 내부 표면이다. box
+                    # 중심은 재료 쪽으로 반 두께 이동해 +normal face를 chord에 둔다.
+                    center -= normal * (proxy.wall_thickness_m * 0.5)
+                    tangent_radius = max(float(start_rz[0]), float(end_rz[0]))
+                    wall_name = f"pan_collision_wall_{index:03d}_{radial_index:02d}"
+                else:
+                    # Legacy straight proxy의 위치/폭/name을 동일하게 유지해
+                    # opt-in하지 않은 config의 물리를 바꾸지 않는다.
+                    tangent_radius = proxy.inner_radius_m
+                    wall_name = f"pan_collision_wall_{index:03d}"
+                tangent_half_length = (
+                    tangent_radius * math.tan(math.pi / proxy.wall_segments) * proxy.segment_overlap
                 )
-                / wall_length
-            )
-            normal = np.cross(wall_axis, tangent)
-            rotation = np.column_stack((tangent, normal, wall_axis))
-            quaternion = _matrix_to_quaternion(rotation)
-            center = radial * mid_radius
-            center[2] = mid_z
-            ET.SubElement(
-                pan_body,
-                "geom",
-                {
-                    **common,
-                    "name": f"pan_collision_wall_{index:03d}",
-                    "type": "box",
-                    "pos": _numbers(center),
-                    "quat": _numbers(quaternion),
-                    "size": _numbers(
-                        (
-                            tangent_half_length,
-                            proxy.wall_thickness_m * 0.5,
-                            wall_length * 0.5 * proxy.segment_overlap,
-                        )
-                    ),
-                },
-            )
+                ET.SubElement(
+                    pan_body,
+                    "geom",
+                    {
+                        **common,
+                        "name": wall_name,
+                        "type": "box",
+                        "pos": _numbers(center),
+                        "quat": _numbers(quaternion),
+                        "size": _numbers(
+                            (
+                                tangent_half_length,
+                                proxy.wall_thickness_m * 0.5,
+                                wall_length * 0.5 * proxy.segment_overlap,
+                            )
+                        ),
+                    },
+                )
 
             theta_next = 2.0 * math.pi * (index + 1) / proxy.wall_segments
             rim_center_radius = 0.5 * (proxy.inner_radius_m + proxy.rim_radius_m)
@@ -790,9 +796,18 @@ class ModelBuilder:
 
         pan_collision_geom_ids = [object_id(mujoco.mjtObj.mjOBJ_GEOM, "pan_collision_bottom")]
         for index in range(self.pan.proxy.wall_segments):
-            pan_collision_geom_ids.append(
-                object_id(mujoco.mjtObj.mjOBJ_GEOM, f"pan_collision_wall_{index:03d}")
-            )
+            if self.pan.proxy.wall_profile == "circular_arc":
+                for radial_index in range(self.pan.proxy.radial_wall_segments):
+                    pan_collision_geom_ids.append(
+                        object_id(
+                            mujoco.mjtObj.mjOBJ_GEOM,
+                            f"pan_collision_wall_{index:03d}_{radial_index:02d}",
+                        )
+                    )
+            else:
+                pan_collision_geom_ids.append(
+                    object_id(mujoco.mjtObj.mjOBJ_GEOM, f"pan_collision_wall_{index:03d}")
+                )
             pan_collision_geom_ids.append(
                 object_id(mujoco.mjtObj.mjOBJ_GEOM, f"pan_collision_rim_{index:03d}")
             )
@@ -855,6 +870,8 @@ class ModelBuilder:
                 "pan_mass_kg_metadata_only": self.pan.mass_kg,
                 "pan_kinematic": True,
                 "pan_collision_mode": "primitive_compound",
+                "pan_collision_wall_profile": self.pan.proxy.wall_profile,
+                "pan_collision_radial_wall_segments": self.pan.proxy.radial_wall_segments,
                 "pan_asset": None if asset_info is None else asset_info.as_dict(),
                 "particle_count": len(particle_spec.radii_m),
                 "particle_species_counts": {

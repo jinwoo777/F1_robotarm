@@ -60,6 +60,7 @@ class Trajectory:
     linear_jerk_wok_m_s3: np.ndarray
     angular_jerk_wok_rad_s3: np.ndarray
     validation: ValidationResult | None = None
+    joint_speed_report: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         count = np.asarray(self.time_s).size
@@ -501,6 +502,48 @@ class PhasewiseMinimumJerkSpline:
         if not np.isfinite(shaped).all():
             raise SplineGenerationError("phasewise spline 평가 결과가 유한하지 않습니다.")
         return shaped
+
+    def sample(
+        self,
+        parameters: Any,
+        sample_rate_hz: float,
+        frame_context: WokFrameContext,
+    ) -> Trajectory:
+        return _sample_spline(self, parameters, sample_rate_hz, frame_context)
+
+
+@dataclass(frozen=True, slots=True)
+class PitchHoldGlobalSpline:
+    """위치는 global C4로 움직이고 pitch는 waypoint 구간별로 정확히 유지한다."""
+
+    waypoints: WaypointSequence
+    _global_spline: GlobalQuinticSpline
+    _phasewise_spline: PhasewiseMinimumJerkSpline
+
+    @classmethod
+    def from_waypoints(cls, waypoints: WaypointSequence) -> PitchHoldGlobalSpline:
+        return cls(
+            waypoints,
+            GlobalQuinticSpline.from_waypoints(waypoints),
+            PhasewiseMinimumJerkSpline.from_waypoints(waypoints),
+        )
+
+    @property
+    def start_time_s(self) -> float:
+        return self._global_spline.start_time_s
+
+    @property
+    def end_time_s(self) -> float:
+        return self._global_spline.end_time_s
+
+    def evaluate(self, time_s: float | np.ndarray, derivative: int = 0) -> np.ndarray:
+        result = np.asarray(
+            self._global_spline.evaluate(time_s, derivative=derivative),
+            dtype=float,
+        ).copy()
+        phasewise = self._phasewise_spline.evaluate(time_s, derivative=derivative)
+        result[..., 4] = phasewise[..., 4]
+        return result
 
     def sample(
         self,

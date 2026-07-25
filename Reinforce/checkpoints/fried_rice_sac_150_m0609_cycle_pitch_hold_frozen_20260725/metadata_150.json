@@ -1,0 +1,47 @@
+{
+  "command": "train",
+  "algorithm": "SAC",
+  "checkpoint": "checkpoints\\fried_rice_sac_150_m0609_cycle_pitch_hold\\sac_wok.zip",
+  "total_timesteps": 150,
+  "periodic_evaluation": null,
+  "action_names": [
+    "descent_angle",
+    "pan_tilt_angle",
+    "descent_speed",
+    "lift_angle"
+  ],
+  "count_per_type_schedule": [
+    20,
+    30,
+    40
+  ],
+  "episodes_per_count": 50,
+  "nominal_joint_speed_target_schedule": [
+    0.8,
+    0.82,
+    0.84,
+    0.86,
+    0.88,
+    0.9
+  ],
+  "episodes_per_speed_target": 25,
+  "parallel_environments": 6,
+  "random_walk": {
+    "enabled": true,
+    "step_std": [
+      0.05,
+      0.05,
+      0.03,
+      0.2
+    ],
+    "bound": [
+      0.25,
+      0.25,
+      0.2,
+      1.0
+    ],
+    "seed": 34
+  },
+  "m0609_validation": "per_episode_status_in_episodes_csv",
+  "real_robot_execution": "not_implemented"
+}

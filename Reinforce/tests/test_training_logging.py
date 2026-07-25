@@ -3,18 +3,27 @@ from __future__ import annotations
 import importlib
 import json
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
 import pandas as pd
+import pytest
 from stable_baselines3 import SAC
+from stable_baselines3.common.noise import VectorizedActionNoise
+from stable_baselines3.common.vec_env import DummyVecEnv
 from typer.testing import CliRunner
 
 from wok_sim.cli import app
 from wok_sim.logging import EpisodeLogger
-from wok_sim.training import evaluate_policy, run_baseline, train_sac
+from wok_sim.training import (
+    PersistentEpisodeRandomWalkNoise,
+    evaluate_policy,
+    run_baseline,
+    train_sac,
+)
 
 
 class _OneStepTrainingEnv(gym.Env[np.ndarray, np.ndarray]):
@@ -28,7 +37,7 @@ class _OneStepTrainingEnv(gym.Env[np.ndarray, np.ndarray]):
     action_space = gym.spaces.Box(
         low=-1.0,
         high=1.0,
-        shape=(7,),
+        shape=(3,),
         dtype=np.float32,
     )
     instances: list[_OneStepTrainingEnv] = []
@@ -54,7 +63,7 @@ class _OneStepTrainingEnv(gym.Env[np.ndarray, np.ndarray]):
         self,
         action: np.ndarray,
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        assert action.shape == (7,)
+        assert action.shape == (3,)
         return (
             np.array([0.5], dtype=np.float32),
             1.0,
@@ -62,6 +71,203 @@ class _OneStepTrainingEnv(gym.Env[np.ndarray, np.ndarray]):
             False,
             {"instance_id": self.instance_id, "final_reward": 1.0},
         )
+
+
+class _CountScheduleProbeEnv(gym.Env[np.ndarray, np.ndarray]):
+    observation_space = gym.spaces.Box(0.0, 1.0, shape=(1,), dtype=np.float32)
+    action_space = gym.spaces.Box(-1.0, 1.0, shape=(3,), dtype=np.float32)
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        super().reset(seed=seed)
+        selected = {} if options is None else dict(options)
+        info: dict[str, Any] = {
+            "count_per_type": int(selected["count_per_type"]),
+        }
+        if "nominal_joint_speed_target_fraction" in selected:
+            info["nominal_joint_speed_target_fraction"] = float(
+                selected["nominal_joint_speed_target_fraction"]
+            )
+        return np.zeros(1, dtype=np.float32), info
+
+    def step(
+        self,
+        _action: np.ndarray,
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        return np.zeros(1, dtype=np.float32), 0.0, True, False, {}
+
+
+def test_six_worker_count_schedule_runs_each_particle_stratum_exactly_50_times() -> None:
+    train_module = importlib.import_module("wok_sim.training.train_sac")
+    schedule = train_module._training_count_schedule(
+        {
+            "count_per_type_schedule": [20, 30, 40],
+            "episodes_per_count": 50,
+        },
+        steps=150,
+        parallel_environments=6,
+    )
+    workers = [
+        train_module._ScheduledCountWrapper(
+            _CountScheduleProbeEnv(),
+            schedule,
+            rank=rank,
+            stride=6,
+        )
+        for rank in range(6)
+    ]
+
+    try:
+        counts = [
+            int(workers[rank].reset()[1]["count_per_type"])
+            for local_episode in range(25)
+            for rank in range(6)
+        ]
+    finally:
+        for worker in workers:
+            worker.close()
+
+    assert counts == [20, 30, 40] * 50
+    assert Counter(counts) == {20: 50, 30: 50, 40: 50}
+
+
+def test_speed_and_particle_schedules_are_exact_and_cross_balanced() -> None:
+    train_module = importlib.import_module("wok_sim.training.train_sac")
+    counts, speeds = train_module._balanced_training_condition_schedules(
+        {
+            "count_per_type_schedule": [20, 30, 40],
+            "episodes_per_count": 50,
+            "nominal_joint_speed_target_schedule": [0.80, 0.82, 0.84, 0.86, 0.88, 0.90],
+            "episodes_per_speed_target": 25,
+            "condition_schedule_seed": 151,
+        },
+        steps=150,
+        parallel_environments=6,
+        seed=51,
+    )
+
+    assert Counter(counts) == {20: 50, 30: 50, 40: 50}
+    assert Counter(speeds) == {
+        0.80: 25,
+        0.82: 25,
+        0.84: 25,
+        0.86: 25,
+        0.88: 25,
+        0.90: 25,
+    }
+    cross_counts = Counter(zip(counts, speeds, strict=True))
+    assert set(cross_counts.values()) == {8, 9}
+
+    workers = [
+        train_module._ScheduledCountWrapper(
+            _CountScheduleProbeEnv(),
+            counts,
+            nominal_joint_speed_target_schedule=speeds,
+            rank=rank,
+            stride=6,
+        )
+        for rank in range(6)
+    ]
+    try:
+        observed = [
+            workers[rank].reset()[1]
+            for _local_episode in range(25)
+            for rank in range(6)
+        ]
+    finally:
+        for worker in workers:
+            worker.close()
+    assert Counter(item["count_per_type"] for item in observed) == {20: 50, 30: 50, 40: 50}
+    assert Counter(item["nominal_joint_speed_target_fraction"] for item in observed) == {
+        0.80: 25,
+        0.82: 25,
+        0.84: 25,
+        0.86: 25,
+        0.88: 25,
+        0.90: 25,
+    }
+
+
+def test_parallel_training_builds_independent_reproducible_worker_random_walks(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    train_module = importlib.import_module("wok_sim.training.train_sac")
+    captured: dict[str, Any] = {}
+
+    class _CapturingSAC:
+        def __init__(self, _policy: str, _environment: Any, **kwargs: Any) -> None:
+            captured.update(kwargs)
+            self.num_timesteps = 0
+
+        def learn(
+            self,
+            *,
+            total_timesteps: int,
+            progress_bar: bool,
+            callback: Any,
+        ) -> _CapturingSAC:
+            del progress_bar, callback
+            self.num_timesteps = total_timesteps
+            return self
+
+        def save(self, _path: Path) -> None:
+            return None
+
+    def _dummy_subproc(env_fns: list[Any], *, start_method: str) -> DummyVecEnv:
+        assert start_method == "spawn"
+        return DummyVecEnv(env_fns)
+
+    monkeypatch.setattr(train_module, "WokMixingEnv", _OneStepTrainingEnv)
+    monkeypatch.setattr(train_module, "SubprocVecEnv", _dummy_subproc)
+    monkeypatch.setattr(train_module, "SAC", _CapturingSAC)
+    train_sac(
+        {
+            "training": {
+                "algorithm": "SAC",
+                "total_timesteps": 150,
+                "parallel_environments": 5,
+                "count_per_type_schedule": [20, 30, 40],
+                "episodes_per_count": 50,
+                "checkpoint_interval": 0,
+                "evaluation_interval": 0,
+                "gradient_steps": 1,
+                "device": "cpu",
+                "random_walk": {
+                    "enabled": True,
+                    "step_std": [0.05, 0.05, 0.03],
+                    "bound": [0.25, 0.25, 0.20],
+                    "seed": 34,
+                },
+            }
+        },
+        checkpoint_path=tmp_path / "noise_policy",
+    )
+
+    noise = captured["action_noise"]
+    assert isinstance(noise, VectorizedActionNoise)
+    assert len(noise.noises) == 5
+    actual = noise()
+    expected = np.stack(
+        [
+            PersistentEpisodeRandomWalkNoise(
+                3,
+                step_std=[0.05, 0.05, 0.03],
+                bound=[0.25, 0.25, 0.20],
+                seed=34 + rank,
+            )()
+            for rank in range(5)
+        ]
+    )
+    np.testing.assert_array_equal(actual, expected)
+    assert actual.shape == (5, 3)
+    assert len({row.tobytes() for row in actual}) == 5
+    assert np.all(np.abs(actual) <= np.asarray([0.25, 0.25, 0.20]))
+    assert captured["gradient_steps"] == 5
 
 
 def test_train_sac_logs_episodes_and_runs_seeded_periodic_evaluation(
@@ -124,6 +330,68 @@ def test_train_sac_logs_episodes_and_runs_seeded_periodic_evaluation(
     with np.load(evaluation_directory / "evaluations.npz") as evaluations:
         np.testing.assert_array_equal(evaluations["timesteps"], [1, 2])
         assert evaluations["results"].shape == (2, 2)
+
+
+def test_train_sac_resumes_checkpoint_and_replay_buffer_as_additional_timesteps(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    train_module = importlib.import_module("wok_sim.training.train_sac")
+    _OneStepTrainingEnv.instances.clear()
+    monkeypatch.setattr(train_module, "WokMixingEnv", _OneStepTrainingEnv)
+    base_training = {
+        "algorithm": "SAC",
+        "seed": 23,
+        "learning_rate": 3e-4,
+        "buffer_size": 16,
+        "learning_starts": 100,
+        "batch_size": 2,
+        "gamma": 0.0,
+        "train_freq": 1,
+        "gradient_steps": 1,
+        "ent_coef": "auto",
+        "evaluation_interval": 0,
+        "verbose": 0,
+        "device": "cpu",
+        "policy_kwargs": {"net_arch": [8]},
+    }
+    initial_checkpoint = tmp_path / "initial_agent"
+    train_sac(
+        {
+            "training": {
+                **base_training,
+                "checkpoint_interval": 2,
+                "checkpoint_save_replay_buffer": True,
+            }
+        },
+        checkpoint_path=initial_checkpoint,
+        total_timesteps=2,
+    )
+    resume_checkpoint = tmp_path / "initial_agent_intermediate_2_steps.zip"
+    resume_replay_buffer = (
+        tmp_path / "initial_agent_intermediate_replay_buffer_2_steps.pkl"
+    )
+
+    result = train_sac(
+        {
+            "training": {
+                **base_training,
+                "checkpoint_interval": 0,
+            }
+        },
+        checkpoint_path=tmp_path / "resumed_agent",
+        resume_from=resume_checkpoint,
+        resume_replay_buffer_from=resume_replay_buffer,
+        total_timesteps=2,
+    )
+
+    assert result.initial_timesteps == 2
+    assert result.additional_timesteps == 2
+    assert result.total_timesteps == 4
+    assert result.resume_from == resume_checkpoint
+    assert result.resume_replay_buffer_from == resume_replay_buffer
+    resumed = SAC.load(result.checkpoint_path)
+    assert resumed.num_timesteps == 4
 
 
 class _HistoryEnv:
@@ -305,6 +573,33 @@ def test_episode_record_serializes_no_flight_nan_as_json_null() -> None:
     encoded = record["particle_flight_summary_json"]
     assert "NaN" not in encoded
     assert json.loads(encoded)["takeoff_time_s"] == [None, 0.5]
+
+
+def test_episode_record_preserves_per_particle_lift_reward_fields() -> None:
+    cli_module = importlib.import_module("wok_sim.cli")
+
+    record = cli_module._episode_record(
+        {"particles": {}},
+        {
+            "lift": {
+                "top_margin_m": 0.001,
+                "lift_score": 0.1,
+                "lifted_particle_count": 6,
+                "lifted_particle_ratio": 0.1,
+                "peak_lifted_particle_ratio": 0.05,
+                "maximum_grain_top_clearance_m": 0.012,
+            },
+            "reward_signals": {"lift_reward_per_particle": 0.05},
+            "reward_terms": {"lift": 0.3},
+        },
+        episode_id=3,
+    )
+
+    assert record["lift_top_margin_m"] == pytest.approx(0.001)
+    assert record["lifted_particle_count"] == 6
+    assert record["lift_reward_per_particle"] == pytest.approx(0.05)
+    assert record["maximum_grain_top_clearance_m"] == pytest.approx(0.012)
+    assert record["lift_reward"] == pytest.approx(0.3)
 
 
 def test_baseline_cli_creates_timestamp_run_and_metadata(

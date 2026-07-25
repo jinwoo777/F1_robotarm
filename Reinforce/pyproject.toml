@@ -12,6 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "F1 Robot Arm Team" }]
 dependencies = [
   "gymnasium>=1.0,<2",
+  "matplotlib>=3.9,<4",
   "mujoco>=3.2,<4",
   "numpy>=1.26,<3",
   "pandas>=2.1,<3",

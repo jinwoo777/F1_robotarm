@@ -15,6 +15,11 @@ from .mixing import (
     size_group_labels,
     spatial_dispersion,
 )
+from .reward import (
+    compute_recovery_return_lift_metrics,
+    compute_reward_terms,
+    recovery_return_sample_mask,
+)
 from .spill import (
     SpillMetrics,
     SpillTracker,
@@ -40,6 +45,8 @@ __all__ = [
     "assign_initial_labels",
     "classify_spilled_particles",
     "compute_mixing_metrics",
+    "compute_recovery_return_lift_metrics",
+    "compute_reward_terms",
     "compute_spill_metrics",
     "compute_trajectory_costs",
     "evaluate_spill",
@@ -49,6 +56,7 @@ __all__ = [
     "mixing_score",
     "occupancy_ratio",
     "particle_radial_distribution",
+    "recovery_return_sample_mask",
     "size_group_labels",
     "spatial_dispersion",
     "track_flights",

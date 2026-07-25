@@ -151,6 +151,29 @@ def test_variable_amount_can_be_fixed_for_weight_stratified_evaluation(
     assert set(np.unique(batch.species, return_counts=True)[1]) == {count_per_type}
 
 
+@pytest.mark.parametrize("count_per_type", (20, 30, 40))
+def test_production_spawn_keeps_all_grains_inside_clustered_five_centimeter_disk(
+    count_per_type: int,
+) -> None:
+    config = load_config(PROJECT_ROOT / "configs" / "fried_rice.yaml")
+    generator = FriedRiceParticleGenerator.from_config(config["particles"])
+
+    batch = generator.generate(seed=17, count_per_type=count_per_type)
+
+    center_radius = np.linalg.norm(batch.positions_m[:, :2], axis=1)
+    assert generator.spawn_radius_m == pytest.approx(0.050)
+    assert np.all(center_radius + batch.radii_m <= generator.spawn_radius_m + 1.0e-12)
+    differences = batch.positions_m[:, None, :] - batch.positions_m[None, :, :]
+    distances = np.linalg.norm(differences, axis=2)
+    required = (
+        batch.radii_m[:, None]
+        + batch.radii_m[None, :]
+        + generator.minimum_clearance_m
+    )
+    off_diagonal = ~np.eye(batch.count, dtype=bool)
+    assert np.all(distances[off_diagonal] >= required[off_diagonal] - 1.0e-12)
+
+
 @pytest.mark.parametrize("invalid_count", (19, 41, 20.5, True))
 def test_variable_amount_rejects_count_outside_configured_integer_range(
     invalid_count: object,

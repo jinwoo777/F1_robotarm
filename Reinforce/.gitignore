@@ -12,3 +12,8 @@ results/
 checkpoints/
 videos/
 MUJOCO_LOG.TXT
+.codex
+
+*.html
+*.gif
+*.md

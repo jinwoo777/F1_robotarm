@@ -93,6 +93,8 @@ class CollisionProxyConfig:
     bottom_thickness_m: float = 0.004
     wall_thickness_m: float = 0.004
     wall_segments: int = 20
+    wall_profile: str = "straight"
+    radial_wall_segments: int = 1
     rim_radius_m: float = 0.116
     rim_tube_radius_m: float = 0.003
     segment_overlap: float = 1.08
@@ -109,6 +111,7 @@ class CollisionProxyConfig:
             "bottom_z": "bottom_z_m",
             "rim_height_m": "rim_z_m",
             "segments": "wall_segments",
+            "radial_segments": "radial_wall_segments",
             "thickness_m": "wall_thickness_m",
         }
         for old, new in aliases.items():
@@ -126,6 +129,31 @@ class CollisionProxyConfig:
                 (outer - inner) * 0.5,
                 1.0e-4,
             )
+        profile_aliases = {
+            "straight": "straight",
+            "linear": "straight",
+            "conical": "straight",
+            "circular": "circular_arc",
+            "arc": "circular_arc",
+            "circular_arc": "circular_arc",
+        }
+        profile_raw = str(raw.get("wall_profile", cls.wall_profile)).strip().lower()
+        if profile_raw not in profile_aliases:
+            supported = ", ".join(sorted(set(profile_aliases.values())))
+            raise PanAssetError(f"지원하지 않는 wall_profile={profile_raw!r}; 지원값: {supported}")
+        raw["wall_profile"] = profile_aliases[profile_raw]
+        radial_segments_raw = raw.get("radial_wall_segments", cls.radial_wall_segments)
+        try:
+            radial_segments = int(radial_segments_raw)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise PanAssetError("radial_wall_segments는 양의 정수여야 합니다.") from exc
+        if (
+            isinstance(radial_segments_raw, bool)
+            or radial_segments != radial_segments_raw
+            or radial_segments <= 0
+        ):
+            raise PanAssetError("radial_wall_segments는 양의 정수여야 합니다.")
+        raw["radial_wall_segments"] = radial_segments
         accepted = {field.name for field in cls.__dataclass_fields__.values()}
         config = cls(**{key: raw[key] for key in accepted if key in raw})
         numbers = np.asarray(
@@ -163,9 +191,45 @@ class CollisionProxyConfig:
             raise PanAssetError("proxy 두께, rim 반지름, overlap은 양수여야 합니다.")
         if config.wall_segments < 8:
             raise PanAssetError("wall_segments는 안정적인 폐곡면을 위해 8 이상이어야 합니다.")
+        if config.wall_profile == "straight" and config.radial_wall_segments != 1:
+            raise PanAssetError(
+                "straight wall_profile은 radial_wall_segments=1이어야 합니다. "
+                "곡면 분할에는 wall_profile='circular_arc'를 사용하세요."
+            )
+        if config.wall_profile == "circular_arc" and config.radial_wall_segments < 2:
+            raise PanAssetError(
+                "circular_arc wall_profile은 radial_wall_segments가 2 이상이어야 합니다."
+            )
         if config.rim_radius_m < config.inner_radius_m:
             raise PanAssetError("rim_radius_m은 inner_radius_m 이상이어야 합니다.")
         return config
+
+    def inner_wall_profile_points(self) -> np.ndarray:
+        """오른쪽 단면의 내부 wall 경계 ``(radius, z)`` 점을 반환한다.
+
+        ``straight``는 기존 bottom/rim 끝점 두 개를 그대로 반환한다.
+        ``circular_arc``는 바닥에서 수평 접선으로 시작하면서 같은 두 끝점을
+        통과하는 원호를 ``radial_wall_segments``개의 chord로 나눈다.
+        """
+
+        bottom = np.asarray((self.bottom_radius_m, self.bottom_z_m), dtype=float)
+        rim = np.asarray((self.inner_radius_m, self.rim_z_m), dtype=float)
+        if self.wall_profile == "straight":
+            return np.stack((bottom, rim))
+
+        radial_change = self.inner_radius_m - self.bottom_radius_m
+        vertical_change = self.rim_z_m - self.bottom_z_m
+        arc_radius = (radial_change * radial_change + vertical_change * vertical_change) / (
+            2.0 * vertical_change
+        )
+        arc_angle = 2.0 * np.arctan2(vertical_change, radial_change)
+        theta = np.linspace(0.0, arc_angle, self.radial_wall_segments + 1)
+        return np.column_stack(
+            (
+                self.bottom_radius_m + arc_radius * np.sin(theta),
+                self.bottom_z_m + arc_radius * (1.0 - np.cos(theta)),
+            )
+        )
 
 
 @dataclass(frozen=True)

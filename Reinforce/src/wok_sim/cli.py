@@ -20,7 +20,7 @@ from wok_sim.robot.base import RobotValidationResult
 from wok_sim.robot.exporter import TrajectoryExportData, export_trajectory
 from wok_sim.training import evaluate_policy, run_baseline, train_sac
 from wok_sim.training.baselines import compact_episode_info
-from wok_sim.trajectory import generate_configured_trajectory
+from wok_sim.trajectory import action_names_for_config, generate_configured_trajectory
 
 app = typer.Typer(
     name="wok-sim",
@@ -107,6 +107,11 @@ def _episode_record(
     mixing = _mapping(info.get("mixing"))
     spill = _mapping(info.get("spill"))
     flight = _mapping(info.get("flight"))
+    lift = _mapping(info.get("lift"))
+    reward_terms = _mapping(info.get("reward_terms"))
+    reward_signals = _mapping(info.get("reward_signals"))
+    pan_tilt_angle = action.get("pan_tilt_angle", action.get("tilt_angle"))
+    descent_speed = action.get("descent_speed", action.get("linear_speed"))
     particle_profile = (
         str(particles.get("profile", particles.get("mode", "scaled_spheres"))).strip().lower()
     )
@@ -126,6 +131,9 @@ def _episode_record(
         "particle_density_kg_m3": info.get("particle_density_kg_m3"),
         "mean_radius_m": info.get("mean_radius_m"),
         "radius_std_m": info.get("radius_std_m"),
+        "nominal_joint_speed_target_fraction": info.get(
+            "nominal_joint_speed_target_fraction"
+        ),
         "particle_species_counts_json": json.dumps(
             _json_safe(info.get("particle_species_counts", {})),
             ensure_ascii=False,
@@ -138,13 +146,21 @@ def _episode_record(
             else particles.get("restitution")
         ),
         "insertion_distance_m": action.get("insertion_distance"),
+        "descent_angle_rad": action.get("descent_angle"),
+        "pan_tilt_angle_rad": pan_tilt_angle,
+        "lift_angle_rad": action.get("lift_angle", action.get("tilt_recovery_angle")),
+        "tilt_recovery_angle_rad": action.get("tilt_recovery_angle"),
+        "descent_speed_m_s": descent_speed,
         "lift_height_m": action.get("lift_height"),
         "backward_distance_m": action.get("backward_distance"),
         "pitch_amplitude_rad": action.get("pitch_amplitude"),
-        "tilt_angle_rad": action.get("tilt_angle"),
-        "target_linear_speed_m_s": action.get("linear_speed"),
+        "tilt_angle_rad": pan_tilt_angle,
+        "target_linear_speed_m_s": descent_speed,
         "target_angular_speed_rad_s": action.get("angular_speed"),
         "cycle_time_s": action.get("cycle_time"),
+        "lift_return_time_factor": action.get("lift_return_time_factor"),
+        "adaptive_retiming_scale": action.get("adaptive_retiming_scale"),
+        "effective_time_scale": action.get("effective_time_scale"),
         "insert_phase_ratio": action.get("insert_phase_ratio"),
         "catch_phase_ratio": action.get("catch_phase_ratio"),
         "maximum_cartesian_velocity_m_s": trajectory_metrics.get("max_cartesian_velocity"),
@@ -169,6 +185,22 @@ def _episode_record(
         "spill_count_ratio": spill.get("spill_count_ratio"),
         "spill_mass_kg": spill.get("spill_mass_kg"),
         "spill_mass_ratio": spill.get("spill_mass_ratio"),
+        "spill_severity": reward_signals.get("spill_severity"),
+        "lift_score": lift.get("lift_score"),
+        "lifted_particle_count": lift.get("lifted_particle_count"),
+        "lifted_particle_ratio": lift.get("lifted_particle_ratio"),
+        "peak_lifted_particle_ratio": lift.get("peak_lifted_particle_ratio"),
+        "lift_top_margin_m": lift.get("top_margin_m"),
+        "lift_reward_per_particle": reward_signals.get("lift_reward_per_particle"),
+        "lift_approach_particle_equivalents": reward_signals.get(
+            "lift_approach_particle_equivalents"
+        ),
+        "lift_approach_multiplier": reward_signals.get("lift_approach_multiplier"),
+        "maximum_grain_top_clearance_m": lift.get("maximum_grain_top_clearance_m"),
+        "mix_reward": reward_terms.get("mix"),
+        "lift_approach_reward": reward_terms.get("lift_approach"),
+        "lift_reward": reward_terms.get("lift"),
+        "spill_reward": reward_terms.get("spill"),
         "mean_flight_height_m": flight.get("mean_flight_height"),
         "maximum_flight_height_m": flight.get("max_flight_height"),
         "flight_height_std_m": flight.get("flight_height_std"),
@@ -181,6 +213,8 @@ def _episode_record(
         ),
         "trajectory_valid": info.get("trajectory_valid"),
         "invalid_reasons": info.get("invalid_reasons"),
+        "curriculum_episode": info.get("curriculum_episode"),
+        "curriculum_stage": info.get("curriculum_stage"),
         "final_reward": info.get("final_reward"),
     }
 
@@ -410,11 +444,35 @@ def baseline(
 def train(
     config: Path = typer.Option(..., exists=True, readable=True),
     checkpoint: Path | None = typer.Option(None),
+    resume_from: Path | None = typer.Option(
+        None,
+        exists=True,
+        readable=True,
+        help="가중치를 이어서 학습할 기존 SAC checkpoint",
+    ),
+    resume_replay_buffer: Path | None = typer.Option(
+        None,
+        exists=True,
+        readable=True,
+        help="기존 checkpoint와 함께 복원할 replay buffer",
+    ),
     timesteps: int | None = typer.Option(None, min=1),
 ) -> None:
-    """Stable-Baselines3 SAC를 학습한다."""
+    """설정된 입자 수 schedule과 random walk로 Stable-Baselines3 SAC를 학습한다."""
 
     loaded = _load_config(config)
+    training_config = _mapping(loaded.get("training"))
+    training_contract = {
+        "action_names": action_names_for_config(loaded),
+        "count_per_type_schedule": training_config.get("count_per_type_schedule"),
+        "episodes_per_count": training_config.get("episodes_per_count"),
+        "nominal_joint_speed_target_schedule": training_config.get(
+            "nominal_joint_speed_target_schedule"
+        ),
+        "episodes_per_speed_target": training_config.get("episodes_per_speed_target"),
+        "parallel_environments": training_config.get("parallel_environments", 1),
+        "random_walk": training_config.get("random_walk"),
+    }
     logger = EpisodeLogger(loaded)
     save_particle_history = _particle_logging_enabled(loaded)
 
@@ -427,6 +485,8 @@ def train(
     result = train_sac(
         loaded,
         checkpoint_path=checkpoint,
+        resume_from=resume_from,
+        resume_replay_buffer_from=resume_replay_buffer,
         total_timesteps=timesteps,
         episode_consumer=log_training_episode,
         evaluation_directory=logger.run_directory / "evaluation",
@@ -437,12 +497,18 @@ def train(
             "algorithm": "SAC",
             "checkpoint": result.checkpoint_path,
             "total_timesteps": result.total_timesteps,
+            "initial_timesteps": result.initial_timesteps,
+            "additional_timesteps": result.additional_timesteps,
+            "resume_from": result.resume_from,
+            "resume_replay_buffer_from": result.resume_replay_buffer_from,
             "periodic_evaluation": result.evaluation_directory,
+            **training_contract,
             "m0609_validation": "per_episode_status_in_episodes_csv",
             "real_robot_execution": "not_implemented",
         }
     )
     payload = asdict(result)
+    payload.update(training_contract)
     payload["result_directory"] = logger.run_directory
     _print_json(payload)
 

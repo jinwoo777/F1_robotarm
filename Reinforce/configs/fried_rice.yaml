@@ -2,12 +2,29 @@
 # Cartesian cap은 제조사 보증 한계가 아니라 초기 offline engineering gate다.
 base_config: default.yaml
 
+pan:
+  # 제공 도면: 120 mm outer rim, 115 mm inner rim, 60 mm flat-bottom
+  # half-width, 55 mm rise, 5 mm bottom/wall thickness.
+  collision_proxy:
+    inner_radius_m: 0.115
+    bottom_radius_m: 0.060
+    bottom_z_m: 0.0
+    rim_z_m: 0.055
+    bottom_thickness_m: 0.005
+    wall_thickness_m: 0.005
+    wall_segments: 24
+    wall_profile: circular_arc
+    radial_wall_segments: 8
+    rim_radius_m: 0.120
+    rim_tube_radius_m: 0.0025
+
 particles:
   profile: fried_rice
   # 100% 기준 총 60개; episode마다 종류별 같은 개수를 뽑아 60~120개로 변동한다.
   count: 60
   target_mass_range_kg: [0.056, 0.128]
-  spawn_radius_m: 0.065
+  # pan 중앙에 더 조밀하게 모아 생성한다(기존 65 mm 원판 → 50 mm 원판).
+  spawn_radius_m: 0.050
   spawn_height_m: 0.010
   spawn_clearance_m: 0.0005
   max_spawn_attempts: 20000
@@ -47,33 +64,59 @@ trajectory:
   cycles: 5
   insertion_angle_deg: 45.0
   # provisional M0609 Cartesian gate; URDF/teaching/실기 검증을 대체하지 않는다.
-  max_cartesian_velocity: 0.35
-  max_angular_velocity: 0.35
-  max_cartesian_acceleration: 0.90
-  max_angular_acceleration: 1.25
-  max_cartesian_jerk: 9.0
-  max_angular_jerk: 11.5
-  # 각 teaching phase 경계의 순간 정지는 의도된 방향 전환이며 dwell time은 없다.
-  allow_cycle_boundary_stop: true
+  max_cartesian_velocity: 0.50
+  max_angular_velocity: 1.30
+  max_cartesian_acceleration: 1.50
+  max_angular_acceleration: 2.70
+  max_cartesian_jerk: 16.0
+  max_angular_jerk: 22.0
+  # 전역 C4 spline으로 phase/cycle 경계에서도 속도를 유지한다.
+  allow_cycle_boundary_stop: false
   workspace:
-    x_m: [-0.02, 0.24]
+    x_m: [-0.03, 0.24]
     y_m: [-0.01, 0.01]
-    z_m: [-0.04, 0.22]
-    pitch_rad: [-0.30, 0.10]
+    # global position spline의 cycle 전환 overshoot 약 1.6 mm를 포함한다.
+    z_m: [-0.04, 0.235]
+    pitch_rad: [-0.23, 0.91]
   fried_rice:
     cycles: 5
-    insertion_angle_deg: 45.0
-    tilt_direction: -1
-    insertion_distance_range_m: [0.20, 0.30]
-    tilt_angle_range_rad: [0.08726646259971647, 0.2617993877991494]  # 5~15 deg
-    linear_speed_range_m_s: [0.20, 0.30]
-    angular_speed_range_rad_s: [0.15, 0.30]
+    motion_profile: continuous_blended_global_quintic
+    # tilt와 하강, lift와 후퇴를 겹쳐 중간 정지를 없앤다.
+    pretilt_translation_fraction: 0.20
+    lift_return_translation_fraction: 0.65
+    lift_return_arc_height_m: 0.025
+    # 삽입 후 P2→P3 lift/후퇴 동안 팬 pitch는 삽입 각도를 유지한다.
+    # 4번째 action(0~30 deg)은 팬 각도 복원이 아니라 직선 후퇴 경로에
+    # 더하는 상승각이다. 0 deg에서는 추가 lift arc가 없는 복귀가 가능하다.
+    hold_insertion_pitch_during_lift_retreat: true
+    # 반복 중 후퇴→다음 삽입에서도 삽입 pitch를 유지하고 마지막에만 복원한다.
+    hold_insertion_pitch_between_cycles: true
+    # 학습 action: +x 기준 하강각, 최대 팬 pitch, 하강 속도, lift 회전량.
+    descent_angle_range_rad: [0.6108652381980153, 0.9599310885968813]  # 35~55 deg
+    pan_tilt_angle_range_rad: [0.3490658503988659, 0.6981317007977318]  # 20~40 deg
+    descent_speed_range_m_s: [0.38, 0.48]
+    lift_angle_range_rad: [0.0, 0.5235987755982988]  # 0~30 deg
+    # 고정 teaching geometry: 먼저 tilt하고 25 cm 하강한 뒤 lift angle만큼 복원.
+    insertion_distance_m: 0.25
+    # 실제 하강 속도 축과 빠른 tilt를 위한 pan-only provisional cap.
+    angular_speed_rad_s: 1.20
+    tilt_direction: 1
     # phase duration retiming에 쓰는 provisional acceleration/jerk gate.
-    linear_acceleration_limit_m_s2: 0.80
-    angular_acceleration_limit_rad_s2: 1.10
-    linear_jerk_limit_m_s3: 8.0
-    angular_jerk_limit_rad_s3: 10.0
+    linear_acceleration_limit_m_s2: 1.40
+    angular_acceleration_limit_rad_s2: 2.50
+    linear_jerk_limit_m_s3: 15.0
+    angular_jerk_limit_rad_s3: 20.0
     minimum_phase_duration_s: 0.50
+    # 기본 동작을 보수적인 M0609 offline engineering gate 안에 두는
+    # uniform retiming. action별 추가 여유는 아래 adaptive gate가 보장한다.
+    continuous_time_scale: 1.50
+    # lift→복귀 구간은 우선 0.875배 시간(약 1.143배 속도)으로 실행한다.
+    # 각 action이 아래 offline Cartesian cap의 95%를 넘으면 geometry와
+    # 0~30도 lift 범위를 유지한 채 전체 cycle만 자동으로 느리게 한다.
+    lift_return_time_factor: 0.875
+    adaptive_robot_retiming: true
+    adaptive_robot_cap_fraction: 0.95
+    adaptive_max_time_scale: 3.0
     sample_rate_hz: 100.0
 
 simulation:
@@ -82,22 +125,53 @@ simulation:
   post_rollout_settle_s: 0.75
   record_every_n_steps: 5
 
+reward:
+  # 최종 절대값이 아니라 episode 시작 대비 혼합도 증가량만 보상한다.
+  mixing_reward_mode: improvement
+  w_mix: 3.0
+  # 하강 뒤 lift와 원위치 복귀 중, 비접촉 grain 윗부분이 rim보다
+  # 1 mm 넘고 최종 유출되지 않았으면 grain당 episode에서 한 번 0.10점을 준다.
+  lift_top_margin_m: 0.001
+  lift_reward_per_particle: 0.10
+  # 실제 lift 이전의 안전한 탐색을 위해 rim 아래 40 mm 구간을 입자별
+  # 0~1 equivalent로 보상한다. curriculum multiplier가 최종에는 0이 된다.
+  lift_approach_band_m: 0.040
+  lift_approach_reward_per_particle: 0.10
+  # 질량/개수 유출 비율 중 큰 값을 사용하고, 심한 유출은 제곱항으로 강하게 감점한다.
+  spill_severity_mode: max_count_mass
+  w_spill: 12.0
+  w_spill_quadratic: 40.0
+
 robot:
   enabled: false
   required: false
-  # 이 cap set은 offline report/export에만 쓰며 실제 controller 값이 아니다.
+  # M0609 공개 정격이 아니라 첫 실기 전 검토용 보수적 engineering gate.
+  # 실제 T_tcp_pan, URDF/IK, singularity, controller 설정 확인 전에는 실행 금지.
   cartesian_caps:
-    linear_velocity_m_s: 0.35
-    angular_velocity_rad_s: 0.35
-    linear_acceleration_m_s2: 0.90
-    angular_acceleration_rad_s2: 1.25
-    linear_jerk_m_s3: 9.0
-    angular_jerk_rad_s3: 11.5
+    linear_velocity_m_s: 0.25
+    angular_velocity_rad_s: 0.5235987755982988  # 30 deg/s
+    linear_acceleration_m_s2: 0.50
+    angular_acceleration_rad_s2: 1.0471975511965976  # 60 deg/s^2
+    linear_jerk_m_s3: 2.0
+    angular_jerk_rad_s3: 4.1887902047863905  # 240 deg/s^3
 
 training:
   algorithm: SAC
-  # WokMixingEnv는 one-step episode이므로 100 timestep == 100 episode다.
-  total_timesteps: 100
+  # 60/90/120개를 각각 150 episode씩 실행한다.
+  # 0~59: 접근 100%, 60~179: 50%→0%, 180~449: 실제 보상만 사용.
+  total_timesteps: 450
+  count_per_type_schedule: [20, 30, 40]
+  episodes_per_count: 150
+  lift_approach_curriculum:
+    enabled: true
+    initial_episodes: 60
+    transition_episodes: 120
+    initial_multiplier: 1.0
+    transition_start_multiplier: 0.5
+    final_multiplier: 0.0
+  # 논리 코어 12개인 Windows 장비에서 절반인 6개 MuJoCo episode를 병렬 실행한다.
+  # 전역 schedule을 rank별로 나누므로 각 입자 조건은 정확히 50회다.
+  parallel_environments: 6
   seed: 17
   target_mass_sampling: generated_mixture
   # 실제 kg은 info에 유지하고 정책 입력만 질량 범위 기준 [-1, 1]로 정규화한다.
@@ -107,26 +181,27 @@ training:
   observation_radius_stats: false
   learning_rate: 0.0003
   buffer_size: 10000
-  # 100회 pilot 안에서도 실제 gradient update가 일어나도록 warm-up을 줄인다.
-  learning_starts: 20
+  # 450회 run 안에서 충분한 초기 탐색 뒤 실제 gradient update를 시작한다.
+  learning_starts: 30
   batch_size: 32
   gamma: 0.0
   train_freq: 1
   gradient_steps: 4
   ent_coef: auto
-  # 정확히 100개 physics episode만 실행하고 평가는 완료 뒤 별도 수행한다.
+  # 정확히 450개 physics episode만 실행하고 평가는 완료 뒤 별도 수행한다.
   evaluation_interval: 0
   evaluation_episodes: 10
-  checkpoint_interval: 20
+  checkpoint_interval: 30
   checkpoint_save_replay_buffer: true
-  checkpoint_directory: checkpoints/fried_rice_sac_100
+  checkpoint_directory: checkpoints/fried_rice_sac_450_curriculum_adaptive0875_bonus010
   device: cpu
   policy_kwargs:
     net_arch: [128, 128]
   random_walk:
     enabled: true
-    step_std: [0.04, 0.04, 0.05, 0.05]
-    bound: 0.25
+    # lift 차원은 policy가 0~30도 전체를 실제로 탐색할 수 있게 범위를 넓힌다.
+    step_std: [0.05, 0.05, 0.03, 0.20]
+    bound: [0.25, 0.25, 0.20, 1.00]
     seed: 34
 
 logging:

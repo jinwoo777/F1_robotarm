@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
@@ -11,6 +12,10 @@ import numpy as np
 
 from wok_sim.geometry.transforms import compose_transform
 from wok_sim.metrics.mixing import assign_initial_labels, compute_mixing_metrics
+from wok_sim.metrics.reward import (
+    compute_recovery_return_lift_metrics,
+    compute_reward_terms,
+)
 from wok_sim.metrics.spill import evaluate_spill
 from wok_sim.metrics.trajectory_cost import compute_trajectory_costs
 from wok_sim.simulation.pan_model import PanModel
@@ -67,6 +72,29 @@ def _as_finite_action(
     if not np.isfinite(array).all():
         raise ValueError("action에 NaN 또는 inf가 포함되어 있습니다.")
     return np.clip(array, -1.0, 1.0)
+
+
+def _lift_approach_curriculum(
+    training_config: Mapping[str, Any],
+    episode_index: int | None,
+) -> tuple[str, float]:
+    """450-episode curriculum의 단계명과 접근 보상 multiplier를 계산한다."""
+
+    raw = training_config.get("lift_approach_curriculum", {})
+    curriculum = raw if isinstance(raw, Mapping) else {}
+    final_multiplier = float(curriculum.get("final_multiplier", 0.0))
+    if not bool(curriculum.get("enabled", False)) or episode_index is None:
+        return "final_objective", final_multiplier
+    initial_episodes = int(curriculum.get("initial_episodes", 0))
+    transition_episodes = int(curriculum.get("transition_episodes", 0))
+    if episode_index < initial_episodes:
+        return "approach_100", float(curriculum.get("initial_multiplier", 1.0))
+    transition_index = episode_index - initial_episodes
+    if transition_index < transition_episodes:
+        start = float(curriculum.get("transition_start_multiplier", 0.5))
+        progress = transition_index / float(max(1, transition_episodes - 1))
+        return "approach_anneal", (1.0 - progress) * start + progress * final_multiplier
+    return "final_objective", final_multiplier
 
 
 class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
@@ -145,6 +173,34 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
         self._include_count_per_type = bool(
             training_config.get("observation_count_per_type", False)
         )
+        self._include_nominal_joint_speed_target = bool(
+            training_config.get("observation_nominal_joint_speed_target", False)
+        )
+        self._nominal_joint_speed_target_range: tuple[float, float] | None = None
+        if self._include_nominal_joint_speed_target:
+            raw_speed_targets = training_config.get("nominal_joint_speed_target_schedule")
+            try:
+                speed_targets = np.asarray(raw_speed_targets, dtype=np.float64)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "speed target 관측에는 "
+                    "training.nominal_joint_speed_target_schedule이 필요합니다."
+                ) from exc
+            if (
+                speed_targets.ndim != 1
+                or len(speed_targets) < 2
+                or not np.isfinite(speed_targets).all()
+                or np.any(speed_targets <= 0.0)
+                or np.any(speed_targets > 1.0)
+                or float(np.min(speed_targets)) == float(np.max(speed_targets))
+            ):
+                raise ValueError(
+                    "speed target 관측 schedule은 서로 다른 (0,1] 값 2개 이상이어야 합니다."
+                )
+            self._nominal_joint_speed_target_range = (
+                float(np.min(speed_targets)),
+                float(np.max(speed_targets)),
+            )
         self._count_per_type_range: tuple[int, int] | None = None
         if self._include_count_per_type:
             if not self._fried_rice_particles:
@@ -190,24 +246,27 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 "training.observation_mass_normalization은 "
                 "'none' 또는 'symmetric_range'여야 합니다."
             )
-        observation_size = (
-            1 + int(self._include_count_per_type) + (2 if self._include_radius_stats else 0)
-        )
-        low = np.zeros(observation_size, dtype=np.float32)
-        low[0] = (
-            np.float32(-1.0)
+        low_values = [
+            -1.0
             if self._mass_observation_normalization == "symmetric_range"
-            else np.float32(self._mass_range_kg[0])
-        )
-        high = np.full(observation_size, np.inf, dtype=np.float32)
-        high[0] = (
-            np.float32(1.0)
+            else float(self._mass_range_kg[0])
+        ]
+        high_values = [
+            1.0
             if self._mass_observation_normalization == "symmetric_range"
-            else np.float32(self._mass_range_kg[1])
-        )
+            else float(self._mass_range_kg[1])
+        ]
         if self._include_count_per_type:
-            low[1] = np.float32(-1.0)
-            high[1] = np.float32(1.0)
+            low_values.append(-1.0)
+            high_values.append(1.0)
+        if self._include_nominal_joint_speed_target:
+            low_values.append(-1.0)
+            high_values.append(1.0)
+        if self._include_radius_stats:
+            low_values.extend([0.0, 0.0])
+            high_values.extend([np.inf, np.inf])
+        low = np.asarray(low_values, dtype=np.float32)
+        high = np.asarray(high_values, dtype=np.float32)
         self.observation_space = gym.spaces.Box(low=low, high=high, dtype=np.float32)
         self.action_space = gym.spaces.Box(
             low=-1.0,
@@ -246,6 +305,8 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
         self._initial_labels: np.ndarray | None = None
         self._target_mass_kg: float | None = None
         self._episode_seed: int | None = None
+        self._curriculum_episode: int | None = None
+        self._nominal_joint_speed_target_fraction: float | None = None
         self._episode_active = False
         self._action_used = False
         self._last_result: SimulationResult | Any | None = None
@@ -279,6 +340,37 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
 
         super().reset(seed=seed)
         options = {} if options is None else dict(options)
+        raw_curriculum_episode = options.get("curriculum_episode")
+        if raw_curriculum_episode is None:
+            self._curriculum_episode = None
+        else:
+            curriculum_episode = int(raw_curriculum_episode)
+            if (
+                isinstance(raw_curriculum_episode, bool)
+                or curriculum_episode != raw_curriculum_episode
+                or curriculum_episode < 0
+            ):
+                raise ValueError("curriculum_episode은 0 이상의 정수여야 합니다.")
+            self._curriculum_episode = curriculum_episode
+        speed_target = options.get("nominal_joint_speed_target_fraction")
+        if speed_target is None:
+            robot_config = _mapping(self.config.get("robot", {}))
+            retiming_config = _mapping(robot_config.get("nominal_joint_speed_retiming", {}))
+            speed_target = retiming_config.get("target_fraction")
+        if speed_target is None:
+            self._nominal_joint_speed_target_fraction = None
+        else:
+            resolved_speed_target = float(speed_target)
+            if not np.isfinite(resolved_speed_target) or not 0.0 < resolved_speed_target <= 1.0:
+                raise ValueError("nominal_joint_speed_target_fraction은 (0,1]이어야 합니다.")
+            if self._nominal_joint_speed_target_range is not None:
+                speed_low, speed_high = self._nominal_joint_speed_target_range
+                if not speed_low <= resolved_speed_target <= speed_high:
+                    raise ValueError(
+                        "nominal_joint_speed_target_fraction이 observation schedule 범위 "
+                        f"[{speed_low}, {speed_high}] 밖입니다."
+                    )
+            self._nominal_joint_speed_target_fraction = resolved_speed_target
         if self._fried_rice_particles:
             if any(key in options for key in ("target_mass_kg", "target_total_mass_kg", "mass_kg")):
                 raise ValueError(
@@ -369,9 +461,10 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
         trajectory: Any | None = None
         trajectory_error: Exception | None = None
         try:
+            trajectory_config = self._trajectory_config_for_episode()
             trajectory = self._trajectory_factory(
                 normalized_action,
-                self.config,
+                trajectory_config,
                 validate=True,
             )
         except Exception as exc:
@@ -577,6 +670,42 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
             spill_metrics_object.spilled_mask,
         )
         reward_config = _mapping(self.config.get("reward", {}))
+        lift_metrics: dict[str, Any] = {
+            "evaluation_phase": "unavailable",
+            "evaluation_sample_count": 0,
+            "rim_z_m": float(self._pan.proxy.rim_z_m),
+            "top_margin_m": float(reward_config.get("lift_top_margin_m", 0.0)),
+            "approach_band_m": float(reward_config.get("lift_approach_band_m", 0.0)),
+            "retained_particle_count": int(np.count_nonzero(~spill_metrics_object.spilled_mask)),
+            "lift_approach_particle_equivalents": 0.0,
+            "mean_lift_approach_fraction": 0.0,
+            "lifted_particle_count": 0,
+            "lifted_particle_ratio": 0.0,
+            "peak_lifted_particle_ratio": 0.0,
+            "peak_lifted_time_s": 0.0,
+            "mean_lifted_top_clearance_m": 0.0,
+            "maximum_grain_top_clearance_m": 0.0,
+            "lift_score": 0.0,
+        }
+        parameters = getattr(trajectory, "parameters", None)
+        phase_durations = getattr(parameters, "phase_durations_s", None)
+        if phase_durations is not None and len(phase_durations) >= 4:
+            recovery_start_s = float(phase_durations[0] + phase_durations[1])
+            lift_metrics = compute_recovery_return_lift_metrics(
+                np.asarray(result.time_s),
+                np.asarray(result.particle_positions_pan_m),
+                np.asarray(result.contact_with_pan),
+                self._particles.radii_m,
+                spill_metrics_object.spilled_mask,
+                rim_z_m=self._pan.proxy.rim_z_m,
+                cycle_time_s=float(parameters.cycle_time),
+                recovery_start_s=recovery_start_s,
+                motion_end_s=float(np.asarray(trajectory.time_s)[-1]),
+                top_margin_m=float(reward_config.get("lift_top_margin_m", 0.0)),
+                approach_band_m=float(reward_config.get("lift_approach_band_m", 0.0)),
+            )
+        elif float(reward_config.get("lift_reward_per_particle", 0.0)) > 0.0:
+            raise RuntimeError("lift reward에는 phase duration이 있는 trajectory가 필요합니다.")
         trajectory_costs_object = compute_trajectory_costs(
             np.asarray(trajectory.time_s),
             np.asarray(trajectory.linear_acceleration_m_s2),
@@ -595,17 +724,24 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 - float(reward_config.get("maximum_height_m", 0.30)),
             )
             height_penalty = float(reward_config.get("w_height", 0.0)) * excess
-        terms = {
-            "mix": float(reward_config.get("w_mix", 1.0))
-            * float(mixing_metrics["mixing_improvement"]),
-            "spill": -float(reward_config.get("w_spill", 1.0))
-            * float(spill_metrics["spill_mass_ratio"]),
-            "jerk": -float(reward_config.get("w_jerk", 0.0)) * float(costs["jerk_cost"]),
-            "acceleration": -float(reward_config.get("w_acc", 0.0))
-            * float(costs["acceleration_cost"]),
-            "height": -height_penalty,
-            "invalid": 0.0,
-        }
+        curriculum_stage, approach_multiplier = _lift_approach_curriculum(
+            _mapping(self.config.get("training", {})),
+            self._curriculum_episode,
+        )
+        terms, reward_signals = compute_reward_terms(
+            mixing_improvement=float(mixing_metrics["mixing_improvement"]),
+            lifted_particle_count=int(lift_metrics["lifted_particle_count"]),
+            spill_mass_ratio=float(spill_metrics["spill_mass_ratio"]),
+            spill_count_ratio=float(spill_metrics["spill_count_ratio"]),
+            jerk_cost=float(costs["jerk_cost"]),
+            acceleration_cost=float(costs["acceleration_cost"]),
+            height_penalty=height_penalty,
+            reward_config=reward_config,
+            lift_approach_particle_equivalents=float(
+                lift_metrics["lift_approach_particle_equivalents"]
+            ),
+            lift_approach_multiplier=approach_multiplier,
+        )
         reward = float(sum(terms.values()))
         info = {
             **self._episode_metadata(),
@@ -615,12 +751,19 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
             "trajectory_valid": True,
             "invalid_trajectory": False,
             "trajectory_validation": _serializable_mapping(getattr(trajectory, "validation", None)),
+            "joint_speed_report": _serializable_mapping(
+                getattr(trajectory, "joint_speed_report", None)
+            ),
             "robot_validation": robot_validation,
             "mixing": mixing_metrics,
             "spill": spill_metrics,
             "flight": flight_metrics,
+            "lift": lift_metrics,
             "trajectory_costs": costs,
             "reward_terms": terms,
+            "reward_signals": reward_signals,
+            "curriculum_episode": self._curriculum_episode,
+            "curriculum_stage": curriculum_stage,
             "final_reward": reward,
             "simulation_metadata": dict(getattr(result, "metadata", {})),
             # Gym checker의 deterministic info 비교가 가능하도록 object 대신
@@ -639,6 +782,22 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 "spill_count_ratio": float(spill_metrics["spill_count_ratio"]),
                 "spill_mass_kg": float(spill_metrics["spill_mass_kg"]),
                 "spill_mass_ratio": float(spill_metrics["spill_mass_ratio"]),
+                "lift_score": float(lift_metrics["lift_score"]),
+                "lifted_particle_count": int(lift_metrics["lifted_particle_count"]),
+                "lifted_particle_ratio": float(lift_metrics["lifted_particle_ratio"]),
+                "peak_lifted_particle_ratio": float(lift_metrics["peak_lifted_particle_ratio"]),
+                "lift_top_margin_m": float(lift_metrics["top_margin_m"]),
+                "lift_reward_per_particle": float(reward_signals["lift_reward_per_particle"]),
+                "lift_approach_particle_equivalents": float(
+                    reward_signals["lift_approach_particle_equivalents"]
+                ),
+                "lift_approach_multiplier": float(
+                    reward_signals["lift_approach_multiplier"]
+                ),
+                "maximum_grain_top_clearance_m": float(
+                    lift_metrics["maximum_grain_top_clearance_m"]
+                ),
+                "spill_severity": float(reward_signals["spill_severity"]),
                 "mean_flight_height": float(flight_metrics["mean_flight_height"]),
                 "max_flight_height": float(flight_metrics["max_flight_height"]),
                 "flight_height_std": float(flight_metrics["flight_height_std"]),
@@ -663,6 +822,10 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
         reward: float,
     ) -> dict[str, Any]:
         validation = None if trajectory is None else getattr(trajectory, "validation", None)
+        curriculum_stage, approach_multiplier = _lift_approach_curriculum(
+            _mapping(self.config.get("training", {})),
+            self._curriculum_episode,
+        )
         reasons: list[str] = []
         if validation is not None:
             violations = getattr(validation, "violations", ())
@@ -684,13 +847,35 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
             "trajectory_validation": _serializable_mapping(validation),
             "robot_validation": robot_validation,
             "simulation_skipped": True,
+            "curriculum_episode": self._curriculum_episode,
+            "curriculum_stage": curriculum_stage,
             "reward_terms": {
                 "mix": 0.0,
+                "lift_approach": 0.0,
+                "lift": 0.0,
                 "spill": 0.0,
                 "jerk": 0.0,
                 "acceleration": 0.0,
                 "height": 0.0,
                 "invalid": reward,
+            },
+            "reward_signals": {
+                "mixing_delta": 0.0,
+                "lifted_particle_count": 0.0,
+                "lift_approach_particle_equivalents": 0.0,
+                "lift_approach_multiplier": approach_multiplier,
+                "lift_approach_reward_per_particle": float(
+                    _mapping(self.config.get("reward", {})).get(
+                        "lift_approach_reward_per_particle",
+                        0.0,
+                    )
+                ),
+                "lift_reward_per_particle": float(
+                    _mapping(self.config.get("reward", {})).get("lift_reward_per_particle", 0.0)
+                ),
+                "spill_mass_ratio": 0.0,
+                "spill_count_ratio": 0.0,
+                "spill_severity": 0.0,
             },
             "final_reward": reward,
             "trajectory": (None if trajectory is None else self._trajectory_view(trajectory)),
@@ -827,7 +1012,9 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 "mixing": dict(info.get("mixing", {})),
                 "spill": dict(info.get("spill", {})),
                 "flight": dict(info.get("flight", {})),
+                "lift": dict(info.get("lift", {})),
             },
+            "reward_signals": dict(info.get("reward_signals", {})),
             "reward_terms": dict(info.get("reward_terms", {})),
             "final_reward": float(info["final_reward"]),
             "simulation_skipped": bool(info.get("simulation_skipped", False)),
@@ -846,6 +1033,9 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
             "particle_density_kg_m3": float(self._particles.density_kg_m3),
             "mean_radius_m": float(np.mean(self._particles.radii_m)),
             "radius_std_m": float(np.std(self._particles.radii_m)),
+            "nominal_joint_speed_target_fraction": (
+                self._nominal_joint_speed_target_fraction
+            ),
         }
         species = getattr(self._particles, "species", None)
         if species is not None:
@@ -883,6 +1073,17 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
             count_low, count_high = self._count_per_type_range
             count_value = 2.0 * (float(counts[0]) - count_low) / (count_high - count_low) - 1.0
             values.append(float(np.clip(count_value, -1.0, 1.0)))
+        if self._include_nominal_joint_speed_target:
+            assert self._nominal_joint_speed_target_range is not None
+            assert self._nominal_joint_speed_target_fraction is not None
+            speed_low, speed_high = self._nominal_joint_speed_target_range
+            speed_value = (
+                2.0
+                * (self._nominal_joint_speed_target_fraction - speed_low)
+                / (speed_high - speed_low)
+                - 1.0
+            )
+            values.append(float(np.clip(speed_value, -1.0, 1.0)))
         if self._include_radius_stats:
             values.extend(
                 [
@@ -891,6 +1092,21 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 ]
             )
         return np.asarray(values, dtype=np.float32)
+
+    def _trajectory_config_for_episode(self) -> Mapping[str, Any]:
+        """현재 episode의 nominal speed target을 trajectory 설정에 반영한다."""
+
+        if self._nominal_joint_speed_target_fraction is None:
+            return self.config
+        trajectory_config = deepcopy(dict(self.config))
+        robot_config = dict(_mapping(trajectory_config.get("robot", {})))
+        retiming_config = dict(
+            _mapping(robot_config.get("nominal_joint_speed_retiming", {}))
+        )
+        retiming_config["target_fraction"] = self._nominal_joint_speed_target_fraction
+        robot_config["nominal_joint_speed_retiming"] = retiming_config
+        trajectory_config["robot"] = robot_config
+        return trajectory_config
 
     @staticmethod
     def _final_no_contact_duration(times_s: np.ndarray, contacts: np.ndarray) -> np.ndarray:

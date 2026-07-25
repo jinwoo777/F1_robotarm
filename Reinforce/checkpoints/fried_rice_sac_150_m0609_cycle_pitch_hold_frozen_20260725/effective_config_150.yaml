@@ -1,0 +1,347 @@
+pan:
+  stl_path: C:\Users\derekdr\F1_robotarm\Reinforce\Wok.stl
+  stl_scale: 0.001
+  mass_kg: 0.7
+  kinematic: true
+  use_procedural_demo: false
+  collision_mode: compound_proxy
+  collision_proxy:
+    inner_radius_m: 0.115
+    bottom_radius_m: 0.06
+    bottom_thickness_m: 0.005
+    wall_height_m: 0.058
+    wall_thickness_m: 0.005
+    wall_segments: 24
+    rim_radius_m: 0.12
+    bottom_z_m: 0.0
+    rim_z_m: 0.055
+    wall_profile: circular_arc
+    radial_wall_segments: 8
+    rim_tube_radius_m: 0.0025
+  initial_pose:
+    position_m:
+    - 0.0
+    - 0.0
+    - 0.2
+    rpy_rad:
+    - 0.0
+    - 0.0
+    - 0.0
+particles:
+  count: 60
+  density_kg_m3: 900.0
+  nominal_radius_m: 0.01
+  radius_jitter_fraction: 0.12
+  mass_tolerance_kg: 1.0e-09
+  target_mass_range_kg:
+  - 0.056
+  - 0.128
+  spawn_radius_m: 0.05
+  spawn_height_m: 0.01
+  spawn_clearance_m: 0.0005
+  max_spawn_attempts: 20000
+  friction:
+  - 0.55
+  - 0.01
+  - 0.001
+  restitution: 0.08
+  linear_damping: 0.05
+  angular_damping: 0.03
+  settle_time_s: 1.5
+  settle_velocity_threshold: 0.03
+  profile: fried_rice
+  fried_rice:
+    count_per_type: 20
+    count_per_type_range:
+    - 20
+    - 40
+    reference_drop_height_m: 0.2
+    contact_time_constant_s: 0.006
+    calibration_timestep_s: 0.002
+    large_sphere:
+      radius_m: 0.005
+      mass_mean_kg: 0.002
+      mass_jitter_fraction: 0.1
+      target_rebound_height_m: 0.03
+      contact_damping_ratio: 0.300627381729
+    small_sphere:
+      radius_m: 0.003
+      mass_kg: 0.0008
+      mass_jitter_fraction: 0.0
+      target_rebound_height_m: 0.01
+      contact_damping_ratio: 0.516754797652
+    ellipsoid:
+      semi_axes_m:
+      - 0.005
+      - 0.002
+      - 0.002
+      mass_kg: 0.0002
+      mass_jitter_fraction: 0.0
+      target_rebound_height_m: 0.015
+      contact_damping_ratio: 0.469157864254
+trajectory:
+  cycles: 5
+  insertion_angle_deg: 45.0
+  insertion_distance_range_m:
+  - 0.025
+  - 0.055
+  lift_height_range_m:
+  - 0.045
+  - 0.085
+  backward_distance_range_m:
+  - 0.035
+  - 0.075
+  pitch_amplitude_range_rad:
+  - 0.1
+  - 0.35
+  cycle_time_range_s:
+  - 0.9
+  - 1.5
+  insert_phase_ratio_range:
+  - 0.18
+  - 0.3
+  catch_phase_ratio_range:
+  - 0.16
+  - 0.28
+  transition_forward_offset_m: 0.008
+  transition_lift_offset_m: 0.008
+  catch_offset_m:
+  - -0.01
+  - 0.0
+  - 0.02
+  sample_rate_hz: 100.0
+  max_cartesian_velocity: 1.0
+  max_cartesian_acceleration: 100.0
+  max_cartesian_jerk: 10000.0
+  workspace:
+    x_m:
+    - -0.03
+    - 0.24
+    y_m:
+    - -0.01
+    - 0.01
+    z_m:
+    - -0.04
+    - 0.235
+    pitch_rad:
+    - -0.23
+    - 0.91
+  y_tolerance: 1.0e-07
+  roll_tolerance: 1.0e-07
+  yaw_tolerance: 1.0e-07
+  start_position_m:
+  - 0.0
+  - 0.0
+  - 0.2
+  start_rpy_rad:
+  - 0.0
+  - 0.0
+  - 0.0
+  profile: fried_rice_teaching
+  max_angular_velocity: 3.9269908169872414
+  max_angular_acceleration: 100.0
+  max_angular_jerk: 10000.0
+  allow_cycle_boundary_stop: false
+  fried_rice:
+    cycles: 5
+    motion_profile: continuous_blended_global_quintic
+    pretilt_translation_fraction: 0.2
+    lift_return_translation_fraction: 0.65
+    lift_return_arc_height_m: 0.025
+    hold_insertion_pitch_during_lift_retreat: true
+    hold_insertion_pitch_between_cycles: true
+    descent_angle_range_rad:
+    - 0.6108652381980153
+    - 0.9599310885968813
+    pan_tilt_angle_range_rad:
+    - 0.3490658503988659
+    - 0.6981317007977318
+    descent_speed_range_m_s:
+    - 0.38
+    - 0.48
+    lift_angle_range_rad:
+    - 0.0
+    - 0.5235987755982988
+    insertion_distance_m: 0.25
+    angular_speed_rad_s: 1.2
+    tilt_direction: 1
+    linear_acceleration_limit_m_s2: 1.4
+    angular_acceleration_limit_rad_s2: 2.5
+    linear_jerk_limit_m_s3: 15.0
+    angular_jerk_limit_rad_s3: 20.0
+    minimum_phase_duration_s: 0.5
+    continuous_time_scale: 1.0
+    lift_return_time_factor: 0.875
+    adaptive_robot_retiming: false
+    adaptive_robot_cap_fraction: 0.9
+    adaptive_max_time_scale: 3.0
+    sample_rate_hz: 100.0
+    adaptive_robot_jerk_cap_fraction: 1.0
+    adaptive_allow_speedup: true
+    adaptive_min_time_scale: 0.25
+simulation:
+  timestep_s: 0.002
+  gravity_m_s2:
+  - 0.0
+  - 0.0
+  - -9.81
+  post_rollout_settle_s: 0.75
+  contact_gap_tolerance_s: 0.025
+  spill_grace_time_s: 0.2
+  spill_boundary_radius_m: 0.145
+  spill_boundary_below_rim_m: 0.1
+  max_steps: 30000
+  record_every_n_steps: 5
+mixing:
+  label_mode: quadrant
+  grid_rows: 4
+  grid_cols: 4
+  minimum_particles_per_cell: 1
+  pan_radius_m: 0.112
+reward:
+  w_mix: 3.0
+  w_spill: 12.0
+  w_jerk: 0.05
+  w_acc: 0.05
+  w_invalid: 20.0
+  jerk_normalization: 100000.0
+  acceleration_normalization: 1000.0
+  height_penalty_enabled: false
+  maximum_height_m: 0.3
+  w_height: 0.0
+  mixing_reward_mode: improvement
+  lift_top_margin_m: 0.001
+  lift_reward_per_particle: 0.1
+  lift_approach_band_m: 0.04
+  lift_approach_reward_per_particle: 0.1
+  spill_severity_mode: max_count_mass
+  w_spill_quadratic: 40.0
+robot:
+  enabled: false
+  required: false
+  urdf_path: null
+  base_link: null
+  tcp_link: null
+  q_teach: null
+  T_base_tcp_teach: null
+  T_tcp_pan: null
+  T_base_wok: null
+  joint_velocity_limits: null
+  joint_acceleration_limits: null
+  branch_jump_threshold_rad: null
+  collision_check: false
+  cartesian_caps:
+    linear_velocity_m_s: 0.25
+    angular_velocity_rad_s: 0.5235987755982988
+    linear_acceleration_m_s2: 0.5
+    angular_acceleration_rad_s2: 1.0471975511965976
+    linear_jerk_m_s3: 2.0
+    angular_jerk_rad_s3: 4.1887902047863905
+  nominal_joint_speed_retiming:
+    enabled: true
+    target_fraction: 0.9
+    tcp_offset_m: 0.4
+    tcp_offset_axis:
+    - 0.0
+    - 0.0
+    - 1.0
+    q_teach_rad:
+    - -1.9392935735280386
+    - -0.2480845207238079
+    - -1.2506058493128482
+    - -0.5490521338106086
+    - 1.6336533475145063
+    - -0.1149857643265979
+    joint_velocity_limits_rad_s:
+    - 2.6179938779914944
+    - 2.6179938779914944
+    - 3.141592653589793
+    - 3.9269908169872414
+    - 3.9269908169872414
+    - 3.9269908169872414
+    joint_position_lower_rad:
+    - -6.283185307179586
+    - -1.6580627893946132
+    - -2.356194490192345
+    - -6.283185307179586
+    - -2.356194490192345
+    - -6.283185307179586
+    joint_position_upper_rad:
+    - 6.283185307179586
+    - 1.6580627893946132
+    - 2.356194490192345
+    - 6.283185307179586
+    - 2.356194490192345
+    - 6.283185307179586
+    tcp_linear_velocity_limit_m_s: 1.0
+    tcp_angular_velocity_limit_rad_s: 2.6179938779914944
+    minimum_time_scale: 0.05
+    maximum_time_scale: 3.0
+training:
+  algorithm: SAC
+  total_timesteps: 150
+  seed: 51
+  target_mass_sampling: generated_mixture
+  observation_radius_stats: false
+  learning_rate: 0.0003
+  buffer_size: 10000
+  learning_starts: 30
+  batch_size: 32
+  evaluation_interval: 0
+  evaluation_episodes: 10
+  checkpoint_directory: checkpoints/fried_rice_sac_150_m0609_cycle_pitch_hold
+  count_per_type_schedule:
+  - 20
+  - 30
+  - 40
+  episodes_per_count: 50
+  lift_approach_curriculum:
+    enabled: false
+    initial_episodes: 18
+    transition_episodes: 42
+    initial_multiplier: 1.0
+    transition_start_multiplier: 0.5
+    final_multiplier: 0.0
+  parallel_environments: 6
+  observation_mass_normalization: symmetric_range
+  observation_count_per_type: true
+  gamma: 0.0
+  train_freq: 1
+  gradient_steps: 4
+  ent_coef: auto
+  checkpoint_interval: 30
+  checkpoint_save_replay_buffer: true
+  device: cpu
+  policy_kwargs:
+    net_arch:
+    - 128
+    - 128
+  random_walk:
+    enabled: true
+    step_std:
+    - 0.05
+    - 0.05
+    - 0.03
+    - 0.2
+    bound:
+    - 0.25
+    - 0.25
+    - 0.2
+    - 1.0
+    seed: 34
+  nominal_joint_speed_target_schedule:
+  - 0.8
+  - 0.82
+  - 0.84
+  - 0.86
+  - 0.88
+  - 0.9
+  episodes_per_speed_target: 25
+  observation_nominal_joint_speed_target: true
+  condition_schedule_seed: 151
+logging:
+  output_directory: results/fried_rice_m0609_cycle_pitch_hold_150
+  save_particle_trajectories: false
+  save_video: false
+  save_csv: true
+  save_npz: true

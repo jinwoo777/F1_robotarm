@@ -1,0 +1,24 @@
+base_config: fried_rice_m0609_joint90_preview.yaml
+
+# Offline domain-randomized speed experiment. Each target is the fraction of
+# the nominal M0609 joint/TCP velocity ceiling used by the kinematic retimer.
+training:
+  total_timesteps: 150
+  count_per_type_schedule: [20, 30, 40]
+  episodes_per_count: 50
+  nominal_joint_speed_target_schedule: [0.80, 0.82, 0.84, 0.86, 0.88, 0.90]
+  episodes_per_speed_target: 25
+  observation_nominal_joint_speed_target: true
+  condition_schedule_seed: 151
+  parallel_environments: 6
+  seed: 51
+  learning_starts: 30
+  checkpoint_interval: 30
+  checkpoint_save_replay_buffer: true
+  checkpoint_directory: checkpoints/fried_rice_sac_150_m0609_speed080_090
+  lift_approach_curriculum:
+    enabled: false
+
+logging:
+  output_directory: results/fried_rice_m0609_speed_sweep_150
+  save_particle_trajectories: false

@@ -1,0 +1,31 @@
+base_config: fried_rice.yaml
+
+trajectory:
+  fried_rice:
+    # 고정 배속 대신 action별 시간축을 양방향으로 조정한다. 속도와
+    # 가속도는 provisional Cartesian cap의 90%를 목표로 하고 jerk는
+    # hard cap 안에 둔다.
+    adaptive_robot_retiming: true
+    adaptive_robot_cap_fraction: 0.90
+    adaptive_robot_jerk_cap_fraction: 1.00
+    adaptive_allow_speedup: true
+    adaptive_min_time_scale: 0.25
+    adaptive_max_time_scale: 3.0
+
+training:
+  total_timesteps: 150
+  episodes_per_count: 50
+  # 450회 curriculum 비율을 6-worker batch 경계에 맞춰 축소:
+  # 접근 18회, 50%→0% 전환 42회, 실제 보상 90회.
+  lift_approach_curriculum:
+    enabled: true
+    initial_episodes: 18
+    transition_episodes: 42
+    initial_multiplier: 1.0
+    transition_start_multiplier: 0.5
+    final_multiplier: 0.0
+  checkpoint_interval: 30
+  checkpoint_directory: checkpoints/fried_rice_sac_150_target090_bonus010
+
+logging:
+  output_directory: results/fried_rice_fast_150

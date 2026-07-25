@@ -43,12 +43,17 @@ legacy profile의 입자는 동일 밀도의 구로 단순화한다. N과 밀도
 ## 볶음밥 pan-only profile
 
 `configs/fried_rice.yaml`은 M0609 모델, URDF, SDK 또는 ROS 없이 팬과 재료만
-시뮬레이션하는 profile이다. 100% 양은 다음 재료를 각각 20개, 합계 60개이며
-episode마다 공통 종별 개수 `n`을 20~40에서 뽑아 총 60~120개(100~200%)로
-바꾼다. 세 종류의 비율은 항상 1:1:1이다. 타원체 크기는 현재
+시뮬레이션하는 profile이다. 100% 양은 다음 재료를 각각 20개, 합계 60개다.
+환경은 공통 종별 개수 `n` 20~40, 즉 총 60~120개를 지원하지만 현재 학습은
+`n=[20,30,40]`인 총 60/90/120개 조건만 각각 50 episode씩 사용한다. 세 종류의
+비율은 항상 1:1:1이다. 타원체 크기는 현재
 **반축(semi-axis)** 으로 해석한다. 사용자가
 말한 0.5/0.2/0.2 cm가 전체 축 길이라는 뜻이었다면 설정값을 절반으로 바꿔야
 한다.
+
+입자는 시작할 때 팬 중심 반경 5 cm 안에 충돌 없이 모아 생성한다. 60/90/120개
+조건에서는 필요한 경우 높이 방향으로 층을 추가하며, 생성 seed가 같으면 초기
+배치도 재현된다.
 
 | 종류 | MuJoCo 형상과 크기 | 개당 질량 | 20 cm 낙하 목표 반발 높이 | 이상적 반발계수 |
 |---|---|---:|---:|---:|
@@ -61,7 +66,7 @@ episode마다 공통 종별 개수 `n`을 20~40에서 뽑아 총 60~120개(100~2
 `[실제 총질량 정규화, 종별 개수 정규화]` 2D이며 둘 다 설정 범위에서
 `[-1,1]`로 변환된다. 실제 kg, 총 개수, 종별 개수와 100% 대비 양은 `info`와
 CSV에 원 단위로 남는다. `reset(options={"count_per_type": 30})`처럼 종별
-개수를 고정해 특정 무게 구간을 재현할 수도 있다.
+개수를 고정해 총 90개 조건을 재현할 수도 있다.
 
 낙하 직전과 반발 직후의 위치에너지 비로부터
 `e_ideal = sqrt(h_rebound / h_drop)`를 계산하고,
@@ -80,39 +85,45 @@ compound proxy, 마찰, 입자 자세·회전 및 solver 설정의 영향을 함
 목표 높이가 모든 상황에서 보장되지는 않는다. 실제 재료 적용 전에는 같은
 20 cm drop test를 profile별로 반복해 parameter를 다시 식별해야 한다.
 
-### 3단 teaching과 4D action
+### 4단 teaching과 4D action
 
-한 cycle은 다음 세 단계를 이 순서로 수행하고 기본값은 5 cycle이다.
+한 cycle은 다음 네 단계를 이 순서로 수행하고 기본값은 5 cycle이다.
 
-1. 시작 pose에서 x-z 평면의 아래·앞 45도 방향으로 직선 삽입한다.
-2. 삽입 위치를 유지하며 팬 pitch를 반대 방향으로 5~15도 기울인다.
-3. 시작 위치로 후퇴하는 동안 pitch도 시작 각도로 동시에 복원한다.
+1. 시작 위치에서 팬을 먼저 +pitch 30도로 기울인다.
+2. pitch 30도를 유지한 채 +x 기준 아래쪽 45도 방향으로 25 cm 하강한다.
+3. 하강 위치를 유지한 채 학습된 lift 각도만큼 pitch를 복원한다.
+4. 시작 위치로 돌아오면서 pitch도 시작 각도로 동시에 복원한다.
 
 볶음밥 정책은 기존 legacy 7D action 대신 다음 4D 정규화 action을 한 번
 출력한다.
 
-1. `insertion_distance`
-2. `tilt_angle`
-3. `linear_speed`
-4. `angular_speed`
+1. `descent_angle`: +x 기준 아래쪽 하강 경로 각도
+2. `pan_tilt_angle`: 하강 중 유지할 +pitch
+3. `descent_speed`: 하강의 목표 최대 선속도
+4. `lift_angle`: 삽입 위치에서 팬을 들어 올릴 pitch 복원량
 
-범위는 삽입 경로 길이 20~30 cm, 반대 tilt 5~15도, 목표 최대 선속도
-0.20~0.30 m/s, 목표 최대 각속도 0.15~0.30 rad/s다. 20~30 cm는 수평
-변위가 아니라 45도 경로 자체의 길이이므로 x 증가와 z 감소는 각각
-14.14~21.21 cm다. 현재 시작 z=20 cm에서 30 cm action의 끝점은
-z≈-1.21 cm이므로 workspace 확장은 pan-only 가정이며 실제 테이블 간섭을
+하강각 범위는 35~55도, 팬 tilt 범위는 20~40도, 속도 범위는
+0.38~0.48 m/s, lift 각도 범위는 0~30도다. 이동 거리는 25 cm, 목표 최대
+각속도는 1.20 rad/s로 고정한다. 중앙 action은 lift 15도이며 하강 끝점은 시작점 기준
+`x≈+0.1768 m`, `z≈-0.1768 m`이고 pitch는 하강 내내 +30도다. +pitch는
+전방인 +x 쪽 팬 가장자리를 낮춰 입자가 앞쪽에 모이도록 한다. 이 방향과
+workspace는 pan-only simulation 계약이며 실제 테이블 또는 로봇 간섭을
 통과했다는 뜻이 아니다.
 
 각 phase는 `s(u)=10u³-15u⁴+6u⁵` minimum-jerk 곡선을 사용해 waypoint 사이를
 단조롭게 이동한다. 따라서 요구 거리와 tilt 각도를 넘는 spline overshoot가
 없고 단계 경계에서 속도·가속도가 0이다. 각 phase 시간은 목표 속도 외에도
 provisional 가속도·jerk gate를 만족하도록
-`max(1.875D/v, sqrt(5.7735D/a), cbrt(60D/j))`로 정하며, 복귀는 선형 이동과
-자세 복원에 필요한 시간 중 큰 값을 쓴다. 중앙 action은 25 cm, 10도,
-0.25 m/s, 0.225 rad/s이고 한 cycle 약 5.204초, 다섯 cycle 약 26.022초다.
-16개 action corner의 다섯-cycle 길이는 약 16.53~46.79초다. action은
-episode 시작 때 결정된 뒤 전체 실행 동안 고정되며 입자나 영상 feedback으로
-수정되지 않는다.
+`max(1.875D/v, sqrt(5.7735D/a), cbrt(60D/j))`로 정한다. 첫 phase는 선행 tilt,
+둘째는 45도 하강, 셋째는 학습된 lift, 넷째는 위치와 남은 pitch의 동시 원복이다.
+중앙 action은 하강각 45도, 팬 tilt 30도, 속도 0.43 m/s, lift 15도이며 한 cycle 약
+4.265초, 다섯 cycle 약 21.327초다. 16개 action corner의 다섯-cycle 길이는
+약 17.73~24.55초다. action은 episode 시작 때 결정된 뒤 전체 실행 동안
+고정되며 입자나 영상 feedback으로 수정되지 않는다.
+
+action shape이 기존 3D에서 4D로 바뀌었으므로 기존 checkpoint는 새 환경과
+호환되지 않는다. 최초 확인은 checkpoint 없이 중앙 action으로 실행하고 학습은
+새 `fried_rice_sac_150_clustered_lift4d_bonus010` 경로에서 처음부터 시작한다.
 
 SAC의 `MlpPolicy`를 사용한다. 입력은 정규화 질량·개수의 저차원 수치이고
 출력도 연속 4D action이므로 작은 MLP가 현재 문제에 가장 직접적이다. CNN은 영상
@@ -130,14 +141,16 @@ step을 적용하고, 경계를 넘은 값은 clipping 대신 반사한다. 현�
 ```python
 from wok_sim.exploration import BoundedEpisodeRandomWalk
 
-walk = BoundedEpisodeRandomWalk(4, step_std=0.08, seed=7)
+walk = BoundedEpisodeRandomWalk(4, step_std=[0.05, 0.05, 0.03, 0.05], seed=7)
 action_for_episode_0 = walk.current_proposal().action
 action_for_episode_1 = walk.advance_episode().action
 ```
 
-볶음밥 설정은 `training.random_walk.enabled: true`로 이 탐색을 SAC의
-additive action noise에도 연결한다. `step_std`는 episode 사이의 변화량,
-`bound`는 noise 자체의 양·음 경계이며, SB3가 episode 종료 때 보내는
+볶음밥 설정은 `training.random_walk.enabled: true`로 하강각, 팬 각도,
+0.38~0.48 m/s 하강 속도와 0~30도 lift 각도를 모두 SAC의 additive
+random-walk noise에 연결한다.
+`step_std`는 episode 사이의 정규화 변화량, `bound`는 noise 자체의 양·음
+경계이며, SB3가 episode 종료 때 보내는
 `reset()`에도 walk 상태를 유지한다. 이 환경에서는 한 `env.step()`이 곧 전체
 5-cycle episode이므로 noise는 다음 episode의 action을 고를 때만 한 번
 갱신되고 MuJoCo physics step 중에는 호출되지 않는다. deterministic 평가는
@@ -155,15 +168,14 @@ python -m wok_sim.cli baseline \
   --config configs/fried_rice.yaml --episodes 20 --strategy random_walk
 python -m wok_sim.cli train \
   --config configs/fried_rice.yaml \
-  --checkpoint checkpoints/fried_rice_sac_100/policy --timesteps 100
+  --checkpoint checkpoints/fried_rice_sac_150_clustered_lift4d_bonus010/policy --timesteps 150
 python -m wok_sim.cli evaluate \
   --config configs/fried_rice.yaml \
-  --checkpoint checkpoints/fried_rice_sac_100/policy.zip --episodes 10 \
-  --count-per-type 20 --count-per-type 25 --count-per-type 30 \
-  --count-per-type 35 --count-per-type 40
+  --checkpoint checkpoints/fried_rice_sac_150_clustered_lift4d_bonus010/policy.zip --episodes 30 \
+  --count-per-type 20 --count-per-type 30 --count-per-type 40
 python -m wok_sim.cli export-trajectory \
   --config configs/fried_rice.yaml \
-  --checkpoint checkpoints/fried_rice_sac_100/policy.zip \
+  --checkpoint checkpoints/fried_rice_sac_150_clustered_lift4d_bonus010/policy.zip \
   --output results/fried_rice_trajectory.csv
 python -m wok_sim.cli check-motion-contract \
   --config configs/fried_rice.yaml
@@ -172,36 +184,24 @@ python -m wok_sim.cli export-doosan-plan \
   --function movel --output results/fried_rice_movel_plan.json
 ```
 
-현재 파일럿 설정은 one-step 환경의 `100 timestep = 100 episode`만 학습한다.
-기존 `learning_starts=128`이면 100회 동안 gradient update가 한 번도 없으므로
-20회 warm-up 뒤 업데이트하도록 낮췄고, one-step contextual 문제에 맞춰
-`gamma=0`, physics sample 하나당 gradient update 4회를 사용한다. 자동 평가는
-꺼 정확히 100개 training episode만 실행한다. 20 episode마다 중간 모델과 replay buffer를 저장하고
-100회 완료 시 최종 `policy.zip`을 저장한다. 100회는 수렴 결과가 아니라
+현재 설정은 one-step 환경의 `150 timestep = 150 episode`를 학습한다. 종별
+개수 schedule `[20,30,40]`은 총 입자 60/90/120개에 해당하며 각 조건을 정확히
+50회씩 배정한다. 논리 코어 12개 중 절반인 MuJoCo 환경 6개를 Windows `spawn`
+방식으로 병렬 실행하고,
+30회 warm-up 뒤 업데이트한다. one-step contextual 문제에 맞춰 `gamma=0`,
+physics sample 하나당 gradient update 4회를 사용한다. lift 보상은 최종 유출되지
+않은 유효 입자 한 알당 0.10점이다. 자동 평가는 끄고 30
+episode마다 중간 모델과 replay buffer를 저장한다. 150회 완료 시 최종
+`policy.zip`을 저장하며, 이는 수렴 보장이 아니라 새 teaching motion의
 physics/reward/학습 배선과 초기 reward 추세를 확인하는 파일럿이다.
 
 짧은 smoke rollout과 기능 검증에는 Modal 또는 Colab이 필요하지 않다.
 MuJoCo의 60~120입자 접촉 계산은 CPU 작업이고 policy도 작은 MLP이므로 T4를
 추가해도 episode 물리 계산은 빨라지지 않는다. 현재 설정도 이 이유로
-`training.device: cpu`를 사용한다. action에 따라 trajectory 시간과 입자
-수가 모두 크게 달라진다. 이 검증 장비에서 seed 11, 중앙 action을 실행한
-실측값은 다음과 같다.
-
-| 종별 개수 | 총 개수 | 실제 질량 | 벽시계 시간 | spill | mixing improvement |
-|---:|---:|---:|---:|---:|---:|
-| 20 | 60 | 59.76 g | 60.41 s | 0 | 0.845 |
-| 30 | 90 | 89.84 g | 115.33 s | 0 | 0.861 |
-| 40 | 120 | 119.56 g | 301.54 s | 0 | 0.890 |
-
-세 지점과 random action의 평균 trajectory 길이로 추산하면 100 episode는
-이 장비에서 약 4시간 규모다. 접촉 상태와 CPU에 따라 편차가 커 Colab T4
-환경은 대략 3~8시간 범위로 보는 편이 안전하다. T4는 작은 policy update만
-가속하고 MuJoCo 접촉 계산은 여전히 CPU에서 수행한다. Colab의
-가속기와 연속 실행 시간은 고정 보장되지 않으므로 중간 checkpoint를 Drive
-등의 영속 저장소로 복사해야 한다. 공식
-[Colab FAQ](https://research.google.com/colaboratory/faq.html)에 따르면
-무료 runtime은 가용성과 사용 패턴에 따라 최대 12시간, 충분한 compute
-unit이 있는 Pro+의 연속 실행은 최대 24시간이다. 이 저장소 자체는 외부
+`training.device: cpu`를 사용한다. action에 따라 다섯-cycle trajectory는 약
+17.73~24.55초이고 입자 수도 달라져 episode 벽시계 시간의 편차가 크다. 이전
+3D teaching의 실행 시간과 mixing 수치는 새 4D motion의 예상치로 재사용하지
+않고, 최초 1회 확인과 150회 학습에서 새로 기록한다. 이 저장소 자체는 외부
 학습 서버나 API 연결을 요구하지 않는다.
 
 ### M0609 경계와 오프라인 검증
@@ -216,11 +216,11 @@ Python 출력에도 API import나 함수 호출은 들어가지 않는다. 어�
 time-scale을 report할 뿐, 한계를 높이거나 trajectory를 몰래 retime하지
 않는다.
 
-볶음밥 profile의 offline cap은 선속도 0.35 m/s, 각속도 0.35 rad/s,
-선가속도 0.90 m/s², 각가속도 1.25 rad/s², 선 jerk 9.0 m/s³,
-각 jerk 11.5 rad/s³다. 16개 action corner에서 측정된 최댓값은 각각
-약 0.3000 m/s, 0.3000 rad/s, 0.7391 m/s², 0.7756 rad/s²,
-6.144 m/s³, 10.0 rad/s³다. 선속도 cap은 공개된 M0609의 약 1 m/s
+볶음밥 profile의 offline cap은 선속도 0.50 m/s, 각속도 1.30 rad/s,
+선가속도 1.50 m/s², 각가속도 2.70 rad/s², 선 jerk 16.0 m/s³,
+각 jerk 22.0 rad/s³다. 16개 4D action corner에서 측정된 최댓값은 각각
+약 0.4617 m/s, 1.0231 rad/s, 1.4000 m/s², 2.4623 rad/s²,
+14.329 m/s³, 20.0 rad/s³다. 선속도 cap은 공개된 M0609의 약 1 m/s
 TCP 최대 속도보다 낮춘 reference이고, 나머지도 제조사 한계가 아닌 초기
 engineering 값이다. cap을 통과해도 safety status는 항상
 `unverified_without_urdf_teaching`이다.
@@ -330,14 +330,16 @@ position/velocity/acceleration도 포함할 수 있다. `T_tcp_pan`이 없을 �
 ## 궤적과 metric
 
 `wok_frame`은 +x가 앞으로 꽂는 방향, +y가 좌측, +z가 위쪽이다. 움직임은
-x-z translation과 y축 pitch만 허용한다. 첫 삽입은 x-z 평면의 아래·앞 45도
-translation이며 팬 자체를 45도 기울인다는 뜻이 아니다. launch 구간에서
-상승과 후퇴는 동시에 일어난다.
+x-z translation과 y축 pitch만 허용한다. 볶음밥 profile은 먼저 +pitch
+20~40도로 기울인 뒤 그 각도를 유지하면서 +x 기준 아래쪽 35~55도로 하강한다.
+중앙 teaching은 pitch 30도와 하강각 45도이며, 다음 phase에서 같은 하강 위치를
+유지하고 학습된 0~30도 lift만큼 pitch를 복원한 뒤 위치와 각도를 함께 원복한다.
 
-P0~P5 waypoint를 5회 연결한 뒤 하나의 global degree-5 spline으로 만든다.
-시작과 끝에서만 속도·가속도를 0으로 두며 cycle 경계에서는 정지시키지 않는다.
-analytic 1~3차 미분으로 속도, 가속도, jerk를 계산하고 workspace/평면/미분
-limit 위반 action은 입자 시뮬레이션 전에 invalid 처리할 수 있다.
+볶음밥 profile은 P0~P4의 네 phase를 minimum-jerk spline으로 연결해 5회
+반복한다. 방향이 바뀌는 각 phase 경계에서 속도와 가속도는 0이며 별도 dwell은
+없다. analytic 1~3차 미분으로 속도, 가속도, jerk를 계산하고
+workspace/평면/미분 limit 위반 action은 입자 시뮬레이션 전에 invalid 처리한다.
+legacy profile의 P0~P5 global spline 계약은 별도로 유지된다.
 
 waypoint와 workspace 검사는 `wok_frame`에서 수행하고, MuJoCo 실행·TCP 변환과
 export에는 base/world frame으로 변환한 pose를 사용한다. 고정된 roll/yaw
@@ -348,10 +350,17 @@ export에는 base/world frame으로 변환한 pose를 사용한다. 고정된 ro
 
 혼합도는 world x-z가 아닌 pan-local 바닥 좌표를 grid로 나눈 뒤 초기 quadrant
 label의 정규화 조건부 엔트로피 `H(C|B)/H(C)`로 측정한다. reward는 초기 대비
-개선량을 쓴다. 유실은 최종 pan-local 상태와 영구 spill boundary 통과를 함께
-보며, 잠깐 비행했다가 팬으로 돌아온 입자를 유실로 세지 않는다. 접촉 해제와
-상대 상향 속도로 takeoff를 찾아 입자별 world/relative 최대 높이, 지속시간과
-상대 속도 기반 launch angle을 기록한다.
+개선량 `final - initial`만 쓴다. 볶음밥 profile은 각 cycle의 하강 완료 뒤
+학습된 lift와 원위치 복귀 구간에서, pan과 비접촉이고 grain 윗부분이 rim보다
+1 mm를 초과하면서 최종 유출되지 않은 grain에 episode당 한 번 0.10점의 lift
+보너스를 준다. 같은 grain의 반복 통과는 중복 계산하지 않고, 밖으로 던진
+grain으로 점수를 얻을 수 없게 한다. 유실은 최종 pan-local 상태와 영구 spill
+boundary 통과를 함께 보며, 잠깐 비행했다가 팬으로 돌아온 입자를 유실로 세지
+않는다. 볶음밥
+유출 감점은 질량/개수 비율 중 큰 값 `r`에 대해 `-(12r + 40r²)`라서 유출이
+심해질수록 한 개 추가 유출의 감점도 커진다. 접촉 해제와 상대 상향 속도로
+takeoff를 찾아 입자별 world/relative 최대 높이, 지속시간과 상대 속도 기반
+launch angle도 별도로 기록한다.
 
 ## TEACHING pose와 M0609
 
@@ -408,6 +417,11 @@ count/mass, 비행 높이·각도 통계 및 reward를 포함한다.
 제어한다. `save_video`는 현재 `rgb_array` 실행 중 RGB frame 수집까지만
 지원하며, CLI에서 MP4로 인코딩하는 기능은 아직 제공하지 않는다.
 
+궤적 그림은 팬 중심을 빨간색, collision proxy의 실제 rim centerline에 있는
+뒤쪽(-x)·앞쪽(+x) 끝점을 파란색으로 표시한다. 세 궤적 모두 같은 시간축에서
+0.1초 간격으로 보간한 점을 사용하므로, 제자리 lift 때 중심이 겹쳐도 양끝의
+회전 궤적으로 팬의 들림을 확인할 수 있다.
+
 ## 개발 검증
 
 ```bash
@@ -415,7 +429,8 @@ pytest -q
 python -m wok_sim.cli smoke-test --config configs/test.yaml
 ```
 
-자동 테스트는 exact mass와 seed 재현성, 45도 삽입, 상승·후퇴 동시성,
-global spline 연속성과 5회 반복, mixing/spill/flight, Gym API, robot
+자동 테스트는 exact mass와 seed 재현성, 선행 30도 tilt·45도 하강·0~30도 lift,
+4D action corner, 60/90/120개 schedule의 각 50회 배정, spline 연속성과 5회
+반복, mixing/spill/flight, Gym API, robot
 비활성 동작과 export schema를 검사한다. 실제 로봇 실행 기능은 의도적으로
 구현하지 않는다.

@@ -87,6 +87,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
     trajectory = config["trajectory"]
     simulation = config["simulation"]
     mixing = config["mixing"]
+    reward = config["reward"]
     robot = config["robot"]
     training = config["training"]
 
@@ -266,13 +267,25 @@ def validate_config(config: Mapping[str, Any]) -> None:
         profile = trajectory.get("fried_rice", {})
         if not isinstance(profile, Mapping):
             raise ConfigError("trajectory.fried_rice는 mapping이어야 합니다.")
-        for key in (
-            "insertion_distance_range_m",
-            "tilt_angle_range_rad",
-            "linear_speed_range_m_s",
-            "angular_speed_range_rad_s",
-        ):
-            _pair(profile, key, positive=True)
+        descent_low, descent_high = _pair(profile, "descent_angle_range_rad", positive=True)
+        if descent_high >= np.pi / 2.0:
+            raise ConfigError("fried_rice 하강 각도는 90도 미만이어야 합니다.")
+        _pair(profile, "pan_tilt_angle_range_rad", positive=True)
+        _pair(profile, "descent_speed_range_m_s", positive=True)
+        lift_angle_low, lift_angle_high = _pair(profile, "lift_angle_range_rad")
+        if lift_angle_low < 0.0 or lift_angle_high > np.pi / 2.0:
+            raise ConfigError("fried_rice lift 각도는 0도 이상 90도 이하여야 합니다.")
+        fixed_positive = (
+            "insertion_distance_m",
+            "angular_speed_rad_s",
+        )
+        for key in fixed_positive:
+            value = float(profile.get(key, 0.0))
+            if not np.isfinite(value) or value <= 0.0:
+                raise ConfigError(f"trajectory.fried_rice.{key}는 양수여야 합니다.")
+        tilt_direction = float(profile.get("tilt_direction", 1.0))
+        if tilt_direction not in (-1.0, 1.0):
+            raise ConfigError("trajectory.fried_rice.tilt_direction은 -1 또는 1이어야 합니다.")
         derivative_gates = (
             ("linear_acceleration_limit_m_s2", "max_cartesian_acceleration"),
             ("angular_acceleration_limit_rad_s2", "max_angular_acceleration"),
@@ -291,24 +304,94 @@ def validate_config(config: Mapping[str, Any]) -> None:
                 )
         if float(profile.get("minimum_phase_duration_s", 0.0)) <= 0.0:
             raise ConfigError("trajectory.fried_rice.minimum_phase_duration_s는 양수여야 합니다.")
-        if _pair(profile, "linear_speed_range_m_s", positive=True)[1] > float(
+        time_scale = float(profile.get("continuous_time_scale", 1.0))
+        if not np.isfinite(time_scale) or time_scale < 1.0:
+            raise ConfigError(
+                "trajectory.fried_rice.continuous_time_scale은 유한한 1 이상 값이어야 합니다."
+            )
+        lift_return_time_factor = float(profile.get("lift_return_time_factor", 1.0))
+        if (
+            not np.isfinite(lift_return_time_factor)
+            or lift_return_time_factor <= 0.0
+            or lift_return_time_factor > 1.0
+        ):
+            raise ConfigError(
+                "trajectory.fried_rice.lift_return_time_factor는 0 초과 1 이하여야 합니다."
+            )
+        if bool(profile.get("adaptive_robot_retiming", False)):
+            cap_fraction = float(profile.get("adaptive_robot_cap_fraction", 1.0))
+            jerk_cap_fraction = float(
+                profile.get("adaptive_robot_jerk_cap_fraction", cap_fraction)
+            )
+            minimum_scale = float(profile.get("adaptive_min_time_scale", 0.25))
+            maximum_scale = float(profile.get("adaptive_max_time_scale", 3.0))
+            if (
+                not np.isfinite(cap_fraction)
+                or not 0.0 < cap_fraction <= 1.0
+                or not np.isfinite(jerk_cap_fraction)
+                or not 0.0 < jerk_cap_fraction <= 1.0
+                or not np.isfinite(minimum_scale)
+                or not 0.0 < minimum_scale <= 1.0
+                or not np.isfinite(maximum_scale)
+                or maximum_scale < 1.0
+            ):
+                raise ConfigError(
+                    "adaptive retiming cap fraction은 (0,1], min time scale은 "
+                    "(0,1], max time scale은 1 이상이어야 합니다."
+                )
+            cartesian_caps = robot.get("cartesian_caps", {})
+            required_caps = (
+                "linear_velocity_m_s",
+                "angular_velocity_rad_s",
+                "linear_acceleration_m_s2",
+                "angular_acceleration_rad_s2",
+                "linear_jerk_m_s3",
+                "angular_jerk_rad_s3",
+            )
+            for key in required_caps:
+                value = float(cartesian_caps.get(key, 0.0))
+                if not np.isfinite(value) or value <= 0.0:
+                    raise ConfigError(
+                        "adaptive retiming에는 양수 robot.cartesian_caps."
+                        f"{key}가 필요합니다."
+                    )
+        motion_profile = str(
+            profile.get("motion_profile", "phasewise_minimum_jerk")
+        ).strip().lower()
+        supported_motion_profiles = {
+            "phasewise_minimum_jerk",
+            "continuous_blended_global_quintic",
+        }
+        if motion_profile not in supported_motion_profiles:
+            raise ConfigError(
+                "trajectory.fried_rice.motion_profile 값이 지원되지 않습니다: "
+                f"{motion_profile!r}"
+            )
+        if motion_profile == "continuous_blended_global_quintic":
+            pretilt = float(profile.get("pretilt_translation_fraction", 0.20))
+            lift_return = float(profile.get("lift_return_translation_fraction", 0.65))
+            arc_height = float(profile.get("lift_return_arc_height_m", 0.025))
+            if (
+                not np.isfinite([pretilt, lift_return, arc_height]).all()
+                or not 0.0 < pretilt < lift_return < 1.0
+                or arc_height <= 0.0
+            ):
+                raise ConfigError(
+                    "continuous motion은 0 < pretilt_translation_fraction < "
+                    "lift_return_translation_fraction < 1 및 양수 arc height가 필요합니다."
+                )
+        if _pair(profile, "descent_speed_range_m_s", positive=True)[1] > float(
             trajectory.get("max_cartesian_velocity", 0.0)
         ):
             raise ConfigError(
-                "fried_rice linear speed 최댓값이 trajectory Cartesian velocity gate를 초과합니다."
+                "fried_rice descent speed 최댓값이 trajectory Cartesian velocity gate를 초과합니다."
             )
-        if _pair(profile, "angular_speed_range_rad_s", positive=True)[1] > float(
+        if float(profile["angular_speed_rad_s"]) > float(
             trajectory.get("max_angular_velocity", 0.0)
         ):
             raise ConfigError(
-                "fried_rice angular speed 최댓값이 trajectory angular velocity gate를 초과합니다."
+                "fried_rice angular speed가 trajectory angular velocity gate를 초과합니다."
             )
-        if not np.isclose(
-            float(profile.get("insertion_angle_deg", 45.0)),
-            45.0,
-            atol=1.0e-12,
-        ):
-            raise ConfigError("fried_rice insertion_angle_deg는 현재 45도여야 합니다.")
     else:
         for key in (
             "insertion_distance_range_m",
@@ -335,8 +418,142 @@ def validate_config(config: Mapping[str, Any]) -> None:
 
     if int(mixing.get("grid_rows", 0)) <= 0 or int(mixing.get("grid_cols", 0)) <= 0:
         raise ConfigError("mixing grid 크기는 양수여야 합니다.")
+
+    for key in (
+        "w_mix",
+        "lift_reward_per_particle",
+        "lift_approach_reward_per_particle",
+        "w_spill",
+        "w_spill_quadratic",
+        "w_jerk",
+        "w_acc",
+        "w_invalid",
+    ):
+        value = float(reward.get(key, 0.0))
+        if not np.isfinite(value) or value < 0.0:
+            raise ConfigError(f"reward.{key}는 유한한 0 이상 값이어야 합니다.")
+    lift_top_margin = float(reward.get("lift_top_margin_m", 0.0))
+    if not np.isfinite(lift_top_margin) or lift_top_margin < 0.0:
+        raise ConfigError("reward.lift_top_margin_m은 유한한 0 이상 값이어야 합니다.")
+    lift_approach_band = float(reward.get("lift_approach_band_m", 0.0))
+    if not np.isfinite(lift_approach_band) or lift_approach_band < 0.0:
+        raise ConfigError("reward.lift_approach_band_m은 유한한 0 이상 값이어야 합니다.")
+    if (
+        float(reward.get("lift_approach_reward_per_particle", 0.0)) > 0.0
+        and lift_approach_band <= 0.0
+    ):
+        raise ConfigError(
+            "lift 접근 보상을 사용하려면 reward.lift_approach_band_m이 양수여야 합니다."
+        )
+    mixing_reward_mode = str(reward.get("mixing_reward_mode", "improvement")).strip().lower()
+    if mixing_reward_mode != "improvement":
+        raise ConfigError("reward.mixing_reward_mode은 'improvement'만 지원합니다.")
+    spill_severity_mode = str(reward.get("spill_severity_mode", "mass")).strip().lower()
+    if spill_severity_mode not in {
+        "mass",
+        "count",
+        "mean_count_mass",
+        "max_count_mass",
+    }:
+        raise ConfigError("reward.spill_severity_mode 값이 지원되지 않습니다.")
     if bool(robot.get("required", False)) and not bool(robot.get("enabled", False)):
         raise ConfigError("robot.required=true이면 robot.enabled도 true여야 합니다.")
+    joint_speed_retiming = robot.get("nominal_joint_speed_retiming", {})
+    if joint_speed_retiming is None:
+        joint_speed_retiming = {}
+    if not isinstance(joint_speed_retiming, Mapping):
+        raise ConfigError("robot.nominal_joint_speed_retiming은 mapping이어야 합니다.")
+    if bool(joint_speed_retiming.get("enabled", False)):
+        target_fraction = float(joint_speed_retiming.get("target_fraction", 0.90))
+        tcp_offset_m = float(joint_speed_retiming.get("tcp_offset_m", 0.40))
+        minimum_time_scale = float(
+            joint_speed_retiming.get("minimum_time_scale", 0.05)
+        )
+        maximum_time_scale = float(
+            joint_speed_retiming.get("maximum_time_scale", 3.0)
+        )
+        positive_scalars = (
+            tcp_offset_m,
+            float(joint_speed_retiming.get("tcp_linear_velocity_limit_m_s", 1.0)),
+            float(
+                joint_speed_retiming.get(
+                    "tcp_angular_velocity_limit_rad_s",
+                    np.deg2rad(150.0),
+                )
+            ),
+        )
+        if (
+            not np.isfinite([target_fraction, minimum_time_scale, maximum_time_scale]).all()
+            or not 0.0 < target_fraction <= 1.0
+            or not 0.0 < minimum_time_scale <= 1.0
+            or maximum_time_scale < 1.0
+            or not np.isfinite(positive_scalars).all()
+            or any(item <= 0.0 for item in positive_scalars)
+        ):
+            raise ConfigError("M0609 nominal joint speed retiming scalar 범위가 유효하지 않습니다.")
+        vectors = {
+            "tcp_offset_axis": (3, False),
+            "q_teach_rad": (6, False),
+            "joint_velocity_limits_rad_s": (6, True),
+            "joint_position_lower_rad": (6, False),
+            "joint_position_upper_rad": (6, False),
+        }
+        resolved_vectors: dict[str, np.ndarray] = {}
+        for key, (length, positive) in vectors.items():
+            if key not in joint_speed_retiming:
+                if key in {"joint_position_lower_rad", "joint_position_upper_rad"}:
+                    continue
+                raise ConfigError(
+                    f"robot.nominal_joint_speed_retiming.{key}가 필요합니다."
+                )
+            vector = np.asarray(joint_speed_retiming[key], dtype=float)
+            if (
+                vector.shape != (length,)
+                or not np.isfinite(vector).all()
+                or (positive and np.any(vector <= 0.0))
+            ):
+                raise ConfigError(
+                    "robot.nominal_joint_speed_retiming."
+                    f"{key}는 유효한 길이 {length} 벡터여야 합니다."
+                )
+            resolved_vectors[key] = vector
+        if float(np.linalg.norm(resolved_vectors["tcp_offset_axis"])) <= np.finfo(float).eps:
+            raise ConfigError("nominal joint speed TCP offset axis는 영벡터일 수 없습니다.")
+        if {
+            "joint_position_lower_rad",
+            "joint_position_upper_rad",
+        }.issubset(resolved_vectors):
+            lower = resolved_vectors["joint_position_lower_rad"]
+            upper = resolved_vectors["joint_position_upper_rad"]
+            if np.any(lower >= upper):
+                raise ConfigError("nominal joint position lower는 upper보다 작아야 합니다.")
+            q_teach = resolved_vectors["q_teach_rad"]
+            if np.any(q_teach < lower) or np.any(q_teach > upper):
+                raise ConfigError("nominal joint q_teach가 position 범위를 벗어납니다.")
+
+    curriculum = training.get("lift_approach_curriculum", {})
+    if curriculum and not isinstance(curriculum, Mapping):
+        raise ConfigError("training.lift_approach_curriculum은 mapping이어야 합니다.")
+    if bool(curriculum.get("enabled", False)):
+        initial_episodes = int(curriculum.get("initial_episodes", 0))
+        transition_episodes = int(curriculum.get("transition_episodes", 0))
+        if initial_episodes <= 0 or transition_episodes <= 1:
+            raise ConfigError(
+                "lift 접근 curriculum의 initial_episodes는 양수, "
+                "transition_episodes는 2 이상이어야 합니다."
+            )
+        multipliers = (
+            float(curriculum.get("initial_multiplier", 1.0)),
+            float(curriculum.get("transition_start_multiplier", 0.5)),
+            float(curriculum.get("final_multiplier", 0.0)),
+        )
+        if not np.isfinite(multipliers).all() or any(value < 0.0 for value in multipliers):
+            raise ConfigError("lift 접근 curriculum multiplier는 유한한 0 이상 값이어야 합니다.")
+        total_timesteps = int(training.get("total_timesteps", 0))
+        if initial_episodes + transition_episodes >= total_timesteps:
+            raise ConfigError(
+                "lift 접근 curriculum 뒤에 실제 보상만 쓰는 episode 구간이 필요합니다."
+            )
 
 
 def _resolve_paths(config: dict[str, Any], config_path: Path) -> None:
@@ -373,26 +590,49 @@ def load_config(
             raise ConfigError(f"YAML 최상위 값은 mapping이어야 합니다: {yaml_path}")
         return data
 
+    def read_with_declared_bases(
+        yaml_path: Path,
+        *,
+        stack: tuple[Path, ...] = (),
+    ) -> dict[str, Any]:
+        resolved_path = yaml_path.expanduser().resolve()
+        if resolved_path in stack:
+            chain = " -> ".join(str(item) for item in (*stack, resolved_path))
+            raise ConfigError(f"base_config 순환 참조가 있습니다: {chain}")
+        layer = read_yaml(resolved_path)
+        declared = layer.pop("base_config", None)
+        inherited: dict[str, Any] = {}
+        if declared is not None:
+            declared_path = Path(str(declared)).expanduser()
+            resolved_base = (
+                declared_path
+                if declared_path.is_absolute()
+                else resolved_path.parent / declared_path
+            )
+            if not resolved_base.is_file():
+                raise ConfigError(f"기본 설정 파일을 찾을 수 없습니다: {resolved_base}")
+            inherited = read_with_declared_bases(
+                resolved_base,
+                stack=(*stack, resolved_path),
+            )
+        _resolve_paths(layer, resolved_path)
+        return _deep_merge(inherited, layer)
+
     current_data = read_yaml(config_path)
-    declared_base = current_data.pop("base_config", None)
+    declared_base = current_data.get("base_config")
     if base_path is not None and declared_base is not None:
         raise ConfigError("base_path 인자와 YAML base_config는 동시에 지정할 수 없습니다.")
-    effective_base = base_path
-    if declared_base is not None:
-        declared_path = Path(str(declared_base)).expanduser()
-        effective_base = (
-            declared_path if declared_path.is_absolute() else config_path.parent / declared_path
-        )
 
-    data: dict[str, Any] = {}
-    if effective_base is not None:
-        base = Path(effective_base).expanduser().resolve()
+    if base_path is None:
+        data = read_with_declared_bases(config_path)
+    else:
+        current_data.pop("base_config", None)
+        base = Path(base_path).expanduser().resolve()
         if not base.is_file():
             raise ConfigError(f"기본 설정 파일을 찾을 수 없습니다: {base}")
-        data = read_yaml(base)
-        _resolve_paths(data, base)
-    _resolve_paths(current_data, config_path)
-    data = _deep_merge(data, current_data)
+        data = read_with_declared_bases(base)
+        _resolve_paths(current_data, config_path)
+        data = _deep_merge(data, current_data)
     if overrides:
         override_data = deepcopy(dict(overrides))
         _resolve_paths(override_data, config_path)
