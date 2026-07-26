@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOKA 관리자 시스템</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg-color: #F8F9FA;
+    --sidebar-bg: #FFFFFF;
+    --card-bg: #FFFFFF;
+    --text-main: #212529;
+    --text-muted: #6C757D;
+    --primary: #E05A33;
+    --primary-hover: #C24A26;
+    --border: #DEE2E6;
+    --radius: 12px;
+    --shadow: 0 4px 12px rgba(0,0,0,0.05);
+    
+    --status-waiting: #F59E0B;
+    --status-cooking: #F97316;
+    --status-done: #10B981;
+  }
+  
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0; font-family: 'Noto Sans KR', sans-serif; font-size: 18px;
+    background-color: var(--bg-color); color: var(--text-main);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  
+  /* Sidebar */
+  .sidebar {
+    width: 260px; background: var(--sidebar-bg); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 30px 20px; z-index: 10;
+  }
+  .brand {
+    font-size: 32px; font-weight: 800; color: var(--primary); margin-bottom: 40px;
+    padding-left: 10px; letter-spacing: -0.5px;
+  }
+  .nav-menu {
+    list-style: none; padding: 0; margin: 0; flex: 1;
+    display: flex; flex-direction: column; gap: 15px; /* Added gap to spread out items */
+  }
+  .nav-item {
+    margin-bottom: 10px;
+  }
+  .nav-btn {
+    width: 100%; text-align: left; background: transparent; border: none;
+    padding: 20px 25px; font-size: 22px; font-weight: 700; color: var(--text-muted);
+    border-radius: 12px; cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 15px;
+  }
+  .nav-btn:hover { background: #f1f3f5; color: var(--text-main); }
+  .nav-btn.active { background: var(--primary); color: #fff; }
+  
+  /* Main Content */
+  .main-content {
+    flex: 1; overflow-y: auto; padding: 40px; display: flex; flex-direction: column;
+  }
+  .tab-content { display: none; animation: fadeIn 0.3s; flex: 1; }
+  .tab-content.active { display: flex; flex-direction: column; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  
+  .page-title { font-size: 32px; font-weight: 800; margin-top: 0; margin-bottom: 30px; }
+  
+  /* Grid Layouts */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+  
+  /* Cards */
+  .card {
+    background: var(--card-bg); border-radius: var(--radius); padding: 25px;
+    box-shadow: var(--shadow); border: 1px solid var(--border);
+  }
+  .stat-card { text-align: center; }
+  .stat-title { font-size: 20px; color: var(--text-muted); margin-bottom: 10px; font-weight: 700; }
+  .stat-value { font-size: 44px; font-weight: 800; }
+  
+  /* Order List */
+  .order-list { display: flex; flex-direction: column; gap: 20px; }
+  .order-item {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; display: flex; justify-content: space-between; align-items: stretch;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  }
+  .order-info { flex: 1; }
+  .order-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+  .order-id { font-size: 24px; font-weight: 800; }
+  .order-time { font-size: 16px; color: var(--text-muted); }
+  .order-menus { font-size: 18px; line-height: 1.6; margin-bottom: 15px; }
+  .order-price { font-size: 22px; font-weight: 700; color: var(--primary); }
+  
+  .status-badge {
+    padding: 6px 12px; border-radius: 20px; font-size: 16px; font-weight: bold; color: white;
+  }
+  .status-WAITING { background: var(--status-waiting); }
+  .status-waiting { background: var(--status-waiting); }
+  .status-COOKING { background: var(--status-cooking); }
+  .status-cooking { background: var(--status-cooking); }
+  .status-DONE { background: var(--status-done); }
+  .status-done { background: var(--status-done); }
+  
+  .order-actions {
+    display: flex; flex-direction: column; gap: 10px; justify-content: center;
+    border-left: 1px solid var(--border); padding-left: 20px; margin-left: 20px; width: 140px;
+  }
+  .action-btn {
+    padding: 12px; font-size: 16px; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;
+    background: #f1f3f5; color: var(--text-main); transition: all 0.2s;
+  }
+  .action-btn:hover { background: #e9ecef; }
+  .action-btn.primary { background: var(--primary); color: white; }
+  .action-btn.primary:hover { background: var(--primary-hover); }
+  .action-btn.success { background: var(--status-done); color: white; }
+  .action-btn.success:hover { background: #0ea5e9; }
+  
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 18px; }
+  th { background: #f8f9fa; color: var(--text-muted); font-weight: 700; text-align: left; padding: 18px; border-bottom: 2px solid var(--border); }
+  td { padding: 18px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  input[type=number] {
+    width: 80px; padding: 8px; font-size: 18px; border: 1px solid var(--border); border-radius: 6px; text-align: center;
+  }
+  
+  /* Charts */
+  .chart-container { position: relative; height: 300px; width: 100%; }
+
+  /* Sales calendar */
+  .cal-nav-btn {
+    width: auto; padding: 8px 20px; font-size: 20px; background: #f1f3f5; color: var(--text-main);
+    border: none; border-radius: 8px; cursor: pointer; font-weight: 800;
+  }
+  .cal-nav-btn:hover { background: #e9ecef; }
+  .sales-calendar { 
+    display: grid; grid-template-columns: repeat(7, 1fr) 110px; gap: 6px; 
+    grid-template-rows: max-content; grid-auto-rows: 1fr; flex: 1; 
+  }
+  .cal-head { text-align: center; font-weight: 700; color: var(--text-muted); padding: 6px 0 10px; font-size: 15px; }
+  .cal-day {
+    min-height: 78px; border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+    position: relative; background: #fff; display: flex; flex-direction: column;
+  }
+  .cal-day.cal-empty { border: none; background: transparent; }
+  .cal-day.cal-today { border-color: var(--primary); background: #fff7f3; }
+  .cal-day-num { font-size: 16px; font-weight: 700; color: var(--text-main); }
+  .cal-today-tag {
+    background: var(--primary); color: #fff; font-size: 12px; padding: 1px 6px; border-radius: 10px; margin-left: 4px;
+  }
+  .cal-amount { margin-top: 10px; font-size: 16px; font-weight: 800; color: var(--primary); }
+  .cal-badge {
+    position: absolute; top: 6px; right: 6px; font-size: 12px; padding: 2px 6px; border-radius: 10px;
+    color: #fff; font-weight: 700;
+  }
+  .cal-badge-high { background: #3b82f6; }
+  .cal-badge-low { background: #ef4444; }
+  .cal-week-total {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #f8f9fa; border-radius: 8px; font-size: 14px; color: var(--text-muted); text-align: center;
+  }
+  .cal-week-total b { color: var(--text-main); font-size: 16px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">BOKA Admin</div>
+    <ul class="nav-menu">
+      <li class="nav-item"><button class="nav-btn active" onclick="showTab('order')">📋 주문 관리</button></li>
+      <li class="nav-item"><button class="nav-btn" onclick="showTab('robot')">🤖 로봇 현황</button></li>
+      <li class="nav-item"><button class="nav-btn" onclick="showTab('inventory')">📦 재고 관리</button></li>
+      <li class="nav-item"><button class="nav-btn" onclick="showTab('sales')">📈 통계</button></li>
+    </ul>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- 직원호출 알림 — 모든 탭에서 항상 보이도록 tab-content 밖에 둔다 -->
+    <div id="staff-call-banner" class="card" style="display:none; margin-bottom:20px; border-left:6px solid #DC2626; background:#FEF2F2;">
+      <div id="staff-call-list"></div>
+    </div>
+
+    <!-- ================= 주문 탭 ================= -->
+    <div id="order" class="tab-content active">
+      <h2 class="page-title">실시간 주문 관리</h2>
+      
+      {% set counts = namespace(waiting=0, cooking=0) %}
+      {% for order in orders %}
+          {% if order.status|lower == "waiting" %}{% set counts.waiting = counts.waiting + 1 %}{% endif %}
+          {% if order.status|lower == "cooking" %}{% set counts.cooking = counts.cooking + 1 %}{% endif %}
+      {% endfor %}
+      
+      <div class="grid-2">
+        <div class="card stat-card">
+          <div class="stat-title">🟡 대기 주문</div>
+          <div class="stat-value" style="color: var(--status-waiting);">{{ counts.waiting }}건</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-title">🔵 현재 조리중</div>
+          <div class="stat-value" style="color: var(--status-cooking);">{{ counts.cooking }}건</div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3 style="margin-top:0; margin-bottom:20px;">주문 목록</h3>
+        <div class="order-list">
+          {% if orders|length == 0 %}
+            <div style="text-align:center; padding:40px; color:var(--text-muted);">주문 내역이 없습니다.</div>
+          {% endif %}
+          
+          {% for order in orders %}
+          <div class="order-item">
+            <div class="order-info">
+              <div class="order-header">
+                <span class="order-id">#{{ order.order_id }}</span>
+                <span class="status-badge" style="background:var(--border); color:var(--text-main);">홀 {{ order.table_number }}</span>
+                <span class="status-badge status-{{ order.status|lower }}">
+                  {% if order.status|lower == 'waiting' %}대기중
+                  {% elif order.status|lower == 'cooking' %}조리중
+                  {% elif order.status|lower == 'done' %}완료
+                  {% else %}{{ order.status }}{% endif %}
+                </span>
+                <span class="order-time">{{ order.order_time }}</span>
+              </div>
+              <div class="order-menus">
+                {% for item in order.order_items %}
+                  <div>- {{ item[0] }} <span style="color:var(--text-muted);">x {{ item[1] }}</span></div>
+                {% endfor %}
+              </div>
+              <div class="order-price">총 {{ "{:,}".format(order.total_price) }}원</div>
+            </div>
+            <div class="order-actions">
+              <form action="/update_status" method="POST" style="margin:0;">
+                <input type="hidden" name="order_id" value="{{ order.order_id }}">
+                <input type="hidden" name="status" value="COOKING">
+                <button type="submit" class="action-btn primary" style="width:100%; margin-bottom:10px;" {% if order.status|lower != 'waiting' %}disabled style="opacity:0.5;"{% endif %}>조리 시작</button>
+              </form>
+              <form action="/update_status" method="POST" style="margin:0;">
+                <input type="hidden" name="order_id" value="{{ order.order_id }}">
+                <input type="hidden" name="status" value="DONE">
+                <button type="submit" class="action-btn success" style="width:100%;" {% if order.status|lower == 'done' %}disabled style="opacity:0.5;"{% endif %}>조리 완료</button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 로봇 탭 ================= -->
+    <div id="robot" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 class="page-title" style="margin-bottom: 0;">로봇 모니터링 대시보드</h2>
+      </div>
+      
+      <!-- Top Center Highlighted Section -->
+      <div style="display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 20px; margin-bottom: 20px;">
+        <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center; padding: 20px;">
+          <div class="stat-title">네트워크 연결</div>
+          <div class="stat-value" style="color:var(--status-done);">🟢 안정됨</div>
+          <div style="margin-top:10px; color:var(--text-muted); font-size:16px;">Ping: 12ms</div>
+        </div>
+        
+        <div class="card stat-card" style="border: 2px solid var(--primary); display: flex; flex-direction: column; justify-content: center; padding: 25px; box-shadow: 0 8px 20px rgba(224, 90, 51, 0.15);">
+          <div class="stat-title" style="font-size: 20px; font-weight: 800;">현재 상태</div>
+          <div class="stat-value" id="robot-state" style="color:var(--primary); font-size: 48px; margin: 10px 0;">대기</div>
+          <div style="margin-top:5px; margin-bottom: 25px; color:var(--text-muted); font-size:18px;">작업: <span id="robot-task" style="font-weight: bold; color: var(--text-main);">없음</span></div>
+          <div style="display: flex; gap: 15px; justify-content: center;">
+            <button onclick="triggerResume()" style="flex:1; padding: 12px; background-color:#10b981; color:white; border:none; border-radius:8px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow:0 4px 10px rgba(16, 185, 129, 0.4); transition:all 0.2s ease;">
+              ▶️ 작업 재개
+            </button>
+            <button onclick="triggerEStop()" style="flex:1; padding: 12px; background-color:#ef4444; color:white; border:none; border-radius:8px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow:0 4px 10px rgba(239,68,68,0.4); transition:all 0.2s ease;">
+              🚨 긴급정지
+            </button>
+          </div>
+        </div>
+        
+        <div class="card stat-card" style="display: flex; flex-direction: column; justify-content: center; padding: 20px;">
+          <div class="stat-title">오늘 조리한 요리</div>
+          <div class="stat-value">24건</div>
+          <div style="margin-top:10px; color:var(--text-muted); font-size:16px;">목표 달성률 80%</div>
+        </div>
+      </div>
+      
+      <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 15px; padding-bottom: 20px;">
+        <div class="card" style="padding: 15px; display: flex; flex-direction: column;">
+          <h3 style="margin-top:0; margin-bottom:15px; font-size:18px;">시간대별 주문 처리 (Today)</h3>
+          <div class="chart-container" style="flex: 1; position: relative; height: 100%;">
+            <canvas id="activityChart"></canvas>
+          </div>
+        </div>
+        <div class="card" style="padding: 15px; display: flex; flex-direction: column;">
+          <h3 style="margin-top:0; margin-bottom:2px; font-size:18px;">그리퍼 파지 상태 (Width mm)</h3>
+          <div id="gripperStatusLabel" style="text-align:center; font-size:14px; font-weight:700; color:var(--text-muted); margin-bottom:4px;">신호 대기 중</div>
+          <div class="chart-container" style="flex: 1; position: relative; height: 100%;">
+            <canvas id="gripperChart"></canvas>
+          </div>
+        </div>
+        <div class="card" style="padding: 15px; display: flex; flex-direction: column;">
+          <h3 style="margin-top:0; margin-bottom:15px; font-size:18px;">실시간 이동 속도 (Speed mm/s)</h3>
+          <div class="chart-container" style="flex: 1; position: relative; height: 100%;">
+            <canvas id="speedChart"></canvas>
+          </div>
+        </div>
+        <div class="card" style="padding: 15px; display: flex; flex-direction: column;">
+          <h3 style="margin-top:0; margin-bottom:15px; font-size:18px;">TCP 위치 궤적 (Top-down View)</h3>
+          <div class="chart-container" style="flex: 1; position: relative; height: 100%;">
+            <canvas id="tcpScatterChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 재고 탭 ================= -->
+    <div id="inventory" class="tab-content">
+      <h2 class="page-title">식자재 재고 현황</h2>
+      <div class="inventory-list" style="display:flex; flex-direction:column; gap:15px;">
+        {% for item in inventory %}
+          {% set img_path = "/static/images/makgeolli.png" %}
+          {% if item[0] == "팥" %}{% set img_path = "/static/images/red_beans.png" %}
+          {% elif item[0] == "콩" %}{% set img_path = "/static/images/soy_beans.png" %}
+          {% elif item[0] == "쌀" %}{% set img_path = "/static/images/rice.png" %}
+          {% elif item[0] == "부침개 반죽" %}{% set img_path = "/static/images/batter.png" %}
+          {% endif %}
+          
+          <div class="card" style="display:flex; align-items:center; padding:15px 25px; gap:20px;">
+            <img src="{{ img_path }}" style="width:70px; height:70px; border-radius:12px; object-fit:cover; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+            <div style="flex:1;">
+              <div style="font-size:24px; font-weight:800; color:var(--text-main);">{{ item[0] }}</div>
+              <div style="font-size:16px; color:var(--text-muted); margin-top:4px;">보관 단위: {{ item[2] }}</div>
+            </div>
+            
+            <form action="/update_stock" method="POST" style="margin:0; display:flex; align-items:center; gap:15px;">
+              <input type="hidden" name="ingredient_name" value="{{ item[0] }}">
+              <div style="display:flex; align-items:center; background:#f8f9fa; border:1px solid var(--border); border-radius:8px; padding:5px 15px;">
+                <input type="number" name="stock" value="{{ item[1] }}" style="border:none; background:transparent; width:100px; text-align:right; font-size:20px; font-weight:700; outline:none; color:var(--primary);" required>
+                <span style="font-weight:700; color:var(--text-muted); margin-left:8px;">{{ item[2] }}</span>
+              </div>
+              <button type="submit" class="action-btn primary" style="padding:12px 24px;">수정 저장</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- ================= 통계 탭 ================= -->
+    <div id="sales" class="tab-content">
+      <h2 class="page-title">매출 리포트</h2>
+
+      <div class="grid-2">
+        <div class="card stat-card">
+          <div class="stat-title">오늘 총 매출</div>
+          <div class="stat-value" style="color:var(--primary);">
+            {{ "{:,}".format(today_sales) }}<span style="font-size:24px; color:var(--text-main);">원</span>
+          </div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-title">이번 달 총 매출</div>
+          <div class="stat-value" id="monthTotalSales" style="color:var(--primary);">-</div>
+        </div>
+      </div>
+
+      <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+        <div style="display:flex; align-items:center; justify-content:center; gap:24px; margin-bottom:24px;">
+          <button class="cal-nav-btn" onclick="changeSalesMonth(-1)">&lt;</button>
+          <h3 id="calendarTitle" style="margin:0; font-size:24px; font-weight:800; min-width:140px; text-align:center;">-</h3>
+          <button class="cal-nav-btn" onclick="changeSalesMonth(1)">&gt;</button>
+        </div>
+        <div id="salesCalendar" class="sales-calendar"></div>
+      </div>
+    </div>
+
+  </main>
+
+<script>
+// 탭 전환 로직
+function showTab(name) {
+  document.querySelectorAll(".tab-content").forEach(tab => tab.classList.remove("active"));
+  document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.remove("active"));
+  
+  document.getElementById(name).classList.add("active");
+  event.currentTarget.classList.add("active");
+  
+  // 차트 렌더링 (로봇 탭 열릴 때 한 번만)
+  if(name === 'robot' && !window.chartsRendered) {
+    renderCharts();
+    window.chartsRendered = true;
+  }
+
+  // 매출 캘린더 (통계 탭 열릴 때 한 번만, 이번 달 기준)
+  if(name === 'sales' && !window.salesCalendarLoaded) {
+    const now = new Date();
+    window.salesYear = now.getFullYear();
+    window.salesMonth = now.getMonth() + 1;
+    loadSalesCalendar();
+    window.salesCalendarLoaded = true;
+  }
+}
+
+// 매출 캘린더: 월 이동 + 로드 + 렌더
+function changeSalesMonth(delta) {
+  window.salesMonth += delta;
+  if (window.salesMonth < 1) { window.salesMonth = 12; window.salesYear -= 1; }
+  if (window.salesMonth > 12) { window.salesMonth = 1; window.salesYear += 1; }
+  loadSalesCalendar();
+}
+
+async function loadSalesCalendar() {
+  try {
+    const res = await fetch(`/api/sales_calendar?year=${window.salesYear}&month=${window.salesMonth}`);
+    const data = await res.json();
+    renderSalesCalendar(data);
+  } catch(e) {
+    console.log("매출 캘린더 로드 에러:", e);
+  }
+}
+
+function renderSalesCalendar(data) {
+  const year = data.year, month = data.month;
+  document.getElementById("calendarTitle").innerText = `${year}년 ${month}월`;
+  document.getElementById("monthTotalSales").innerHTML =
+    data.total.toLocaleString() + '<span style="font-size:24px; color:var(--text-main);">원</span>';
+
+  const firstDow = new Date(year, month - 1, 1).getDay();   // 0=일요일
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  const dailyVals = Object.values(data.daily).filter(v => v > 0);
+  const maxVal = dailyVals.length ? Math.max(...dailyVals) : 0;
+  const minVal = dailyVals.length ? Math.min(...dailyVals) : 0;
+
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && (today.getMonth() + 1) === month;
+  const todayDate = today.getDate();
+
+  // 주 단위로 날짜 묶기 (일~토, 앞뒤는 빈 칸)
+  const weeks = [];
+  let week = new Array(firstDow).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    week.push(d);
+    if (week.length === 7) { weeks.push(week); week = []; }
+  }
+  if (week.length) {
+    while (week.length < 7) week.push(null);
+    weeks.push(week);
+  }
+
+  let html = "";
+  ["일", "월", "화", "수", "목", "금", "토", "주간 합산"].forEach(h => {
+    html += `<div class="cal-head">${h}</div>`;
+  });
+
+  weeks.forEach((w, wi) => {
+    let weekTotal = 0;
+    w.forEach(d => {
+      if (d === null) {
+        html += `<div class="cal-day cal-empty"></div>`;
+        return;
+      }
+      const amt = data.daily[d] || 0;
+      weekTotal += amt;
+      const isToday = isCurrentMonth && d === todayDate;
+      let badge = "";
+      if (amt > 0 && amt === maxVal) badge = `<span class="cal-badge cal-badge-high">최고</span>`;
+      else if (amt > 0 && amt === minVal && maxVal !== minVal) badge = `<span class="cal-badge cal-badge-low">최저</span>`;
+      html += `
+        <div class="cal-day ${isToday ? 'cal-today' : ''}">
+          <div class="cal-day-num">${d}${isToday ? '<span class="cal-today-tag">오늘</span>' : ''}</div>
+          ${badge}
+          ${amt > 0 ? `<div class="cal-amount">${amt.toLocaleString()}원</div>` : ''}
+        </div>`;
+    });
+    html += `<div class="cal-week-total">${wi + 1}주<b>${weekTotal.toLocaleString()}원</b></div>`;
+  });
+
+  document.getElementById("salesCalendar").innerHTML = html;
+}
+
+// 실시간 로봇 상태 동기화 (state/task + 그리퍼 폭/TCP 궤적/속도 차트)
+async function loadRobotStatus(){
+  try {
+    const res = await fetch("/api/robot_status");
+    const robot = await res.json();
+    document.getElementById("robot-state").innerText = robot.state;
+    document.getElementById("robot-task").innerText = robot.task;
+
+    const stateEl = document.getElementById("robot-state");
+    if(robot.state === "대기") stateEl.style.color = "var(--status-waiting)";
+    else if(robot.state === "조리중") stateEl.style.color = "var(--status-cooking)";
+    else if(robot.state === "완료") stateEl.style.color = "var(--status-done)";
+    else stateEl.style.color = "red";
+
+    // 서버가 "완료" 신호로 주문을 자동 DONE 처리하므로, 여기서도 그 전환 시점에 페이지를
+    // 새로고침해 주문 목록(서버 렌더링)을 최신 상태로 맞춘다 — 관리자가 직접 "조리 완료"를
+    // 누르지 않아도 목록이 갱신되게 하려는 목적.
+    if(window._prevRobotState === "조리중" && robot.state === "완료") {
+      setTimeout(() => location.reload(), 1000);
+    }
+    window._prevRobotState = robot.state;
+
+    if(window.chartsRendered) updateLiveCharts(robot);
+  } catch(e) {
+    console.log("로봇 상태 업데이트 에러:", e);
+  }
+}
+loadRobotStatus();
+setInterval(loadRobotStatus, 1000);   // 실시간 차트 반영을 위해 1초 주기로 폴링
+
+// 직원호출 — 손님이 테이블 오더 화면에서 호출하면 여기 배너에 떠서 어느 탭을 보고 있어도 보인다.
+async function loadStaffCalls() {
+  try {
+    const res = await fetch("/api/staff_calls");
+    const calls = await res.json();
+    const banner = document.getElementById("staff-call-banner");
+    const list = document.getElementById("staff-call-list");
+
+    if (calls.length === 0) {
+      banner.style.display = "none";
+      return;
+    }
+
+    banner.style.display = "block";
+    list.innerHTML = calls.map(c => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0;">
+        <span style="font-weight:800; color:#DC2626;">🔔 홀 ${c.table_number} 직원호출 — ${c.call_time}</span>
+        <button class="action-btn primary" style="width:auto; padding:8px 18px;" onclick="resolveStaffCall(${c.call_id})">확인 완료</button>
+      </div>
+    `).join("");
+  } catch (e) {
+    console.log("직원호출 목록 조회 에러:", e);
+  }
+}
+
+async function resolveStaffCall(callId) {
+  try {
+    await fetch("/api/staff_calls/resolve", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ call_id: callId })
+    });
+    loadStaffCalls();
+  } catch (e) {
+    console.log("직원호출 확인 처리 에러:", e);
+  }
+}
+
+loadStaffCalls();
+setInterval(loadStaffCalls, 3000);
+
+// 서버가 /update_status에서 중복 조리 시작을 막았을 때 안내
+{% if warning == "already_cooking" %}
+alert("이미 조리 중인 로봇 작업이 있습니다. 완료된 뒤에 다시 시작해주세요.");
+{% endif %}
+
+// 긴급정지 로직
+async function triggerEStop() {
+  if (confirm("정말 긴급정지 하시겠습니까? 진행 중인 로봇 작업이 즉시 멈춥니다.")) {
+    try {
+      const res = await fetch("/api/estop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (res.ok) {
+        alert("🚨 E-STOP 신호가 로봇으로 전송되었습니다.");
+      } else {
+        alert("통신 오류가 발생했습니다.");
+      }
+    } catch(e) {
+      alert("서버 연결 실패");
+      console.error(e);
+    }
+  }
+}
+
+// 작업 재개 로직
+async function triggerResume() {
+  if (confirm("정지된 로봇 작업을 재개하시겠습니까?")) {
+    try {
+      const res = await fetch("/api/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (res.ok) {
+        alert("▶️ 작업 재개 신호가 전송되었습니다.");
+      } else {
+        alert("통신 오류가 발생했습니다.");
+      }
+    } catch(e) {
+      alert("서버 연결 실패");
+      console.error(e);
+    }
+  }
+}
+
+// 차트 렌더링 — 그리퍼 폭/TCP 궤적/이동 속도는 wok_test4 실측값, 시간대별 주문 처리는
+// DB의 오늘 실제 주문 기록(서버에서 Jinja로 주입) 기반이다.
+function renderCharts() {
+  Chart.defaults.font.family = "'Noto Sans KR', sans-serif";
+  Chart.defaults.color = "#6C757D";
+
+  // 1. 시간대별 주문 처리 (Bar) — 오늘 실제 주문 건수 (DB 기반, admin() 렌더 시점 스냅샷)
+  const ctxActivity = document.getElementById('activityChart').getContext('2d');
+  new Chart(ctxActivity, {
+    type: 'bar',
+    data: {
+      labels: {{ hourly_labels | tojson }},
+      datasets: [{
+        label: '주문 처리 건수',
+        data: {{ hourly_counts | tojson }},
+        backgroundColor: '#E05A33',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f1f3f5' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  // 2. 실시간 이동 속도 (Area Chart) — 실시간: wok_test4 /tcp_pose 간격으로부터 서버가 계산
+  const ctxSpeed = document.getElementById('speedChart').getContext('2d');
+  window.speedChart = new Chart(ctxSpeed, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: '직선 이동 속도 (mm/s)',
+        data: [],   // 실데이터 폴링마다 rolling window로 채워짐 (updateLiveCharts)
+        borderColor: '#10B981',
+        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+        borderWidth: 2,
+        tension: 0.4,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, grid: { color: '#f1f3f5' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  // 3. 그리퍼 파지 상태 (Gauge Chart using Doughnut) — 실시간: wok_test4 /gripper_width
+  window.liveGripperWidthText = "-- mm";
+  const ctxGripper = document.getElementById('gripperChart').getContext('2d');
+  window.gripperChart = new Chart(ctxGripper, {
+    type: 'doughnut',
+    data: {
+      labels: ['현재 폭', '여유'],
+      datasets: [{
+        data: [0, 100],   // 실데이터 들어오기 전 초기값. 최대 100mm(그리퍼 최대개방) 기준.
+        backgroundColor: ['#F97316', '#E2E8F0'],
+        borderWidth: 0,
+        circumference: 180,
+        rotation: 270,
+        cutout: '80%'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } }
+    },
+    plugins: [{
+      id: 'gaugeText',
+      beforeDraw: function(chart) {
+        var width = chart.width, height = chart.height, ctx = chart.ctx;
+        ctx.restore();
+        var fontSize = (height / 120).toFixed(2);
+        ctx.font = "bold " + fontSize + "em sans-serif";
+        ctx.textBaseline = "bottom";
+        ctx.fillStyle = "#212529";
+        var text = window.liveGripperWidthText, textX = Math.round((width - ctx.measureText(text).width) / 2), textY = height;
+        ctx.fillText(text, textX, textY - 10);
+        ctx.save();
+      }
+    }]
+  });
+
+  // 4. TCP 위치 궤적 (2D Scatter Map) — 실시간: wok_test4 /tcp_pose (최근 15개 점, 서버가 유지)
+  const ctxScatter = document.getElementById('tcpScatterChart').getContext('2d');
+  window.tcpScatterChart = new Chart(ctxScatter, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'TCP 경로 (최근 15개 점)',
+        data: [],
+        backgroundColor: '#E05A33',
+        borderColor: '#E05A33',
+        pointRadius: 4,
+        showLine: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { grid: { color: '#f1f3f5' }, title: { display: true, text: 'X 축 (mm)' } },
+        y: { grid: { color: '#f1f3f5' }, title: { display: true, text: 'Y 축 (mm)' } }
+      },
+      plugins: {
+        legend: { display: true, position: 'bottom' }
+      }
+    }
+  });
+}
+
+// 실시간 텔레메트리 → 차트 반영 (loadRobotStatus가 1초마다 호출)
+// 그리퍼 폭·TCP 궤적·이동 속도는 wok_test4가 실제로 발행하는 값으로 갱신된다
+// (wok_test4가 안 켜져 있으면 신호가 없으므로 "신호 대기 중"으로 표시된 채 유지된다).
+function updateLiveCharts(robot) {
+  if (robot.gripper_width_mm !== null && robot.gripper_width_mm !== undefined && window.gripperChart) {
+    const w = Math.max(0, Math.min(100, robot.gripper_width_mm));
+    window.gripperChart.data.datasets[0].data = [w, 100 - w];
+    window.liveGripperWidthText = robot.gripper_width_mm.toFixed(1) + " mm";
+    window.gripperChart.update('none');
+
+    const labelEl = document.getElementById("gripperStatusLabel");
+    if (labelEl) {
+      labelEl.innerText = "실시간 수신 중";
+      labelEl.style.color = "var(--status-done)";
+    }
+  }
+
+  if (robot.tcp_history && robot.tcp_history.length && window.tcpScatterChart) {
+    window.tcpScatterChart.data.datasets[0].data = robot.tcp_history;
+    window.tcpScatterChart.update('none');
+  }
+
+  if (robot.speed_mm_s !== null && robot.speed_mm_s !== undefined && window.speedChart) {
+    const ds = window.speedChart.data.datasets[0].data;
+    ds.push(robot.speed_mm_s);
+    if (ds.length > 20) ds.shift();
+    window.speedChart.data.labels = ds.map((_, i) => i === ds.length - 1 ? "현재" : "");
+    window.speedChart.update('none');
+  }
+}
+</script>
+</body>
+</html>
