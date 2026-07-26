@@ -1,0 +1,10 @@
+base_config: fried_rice_pitch_release_6d_8h.yaml
+
+# 학습용이 아닌 결합 궤적 GIF/물리 사전 확인 전용 설정.
+trajectory:
+  fried_rice:
+    # pitch release와 정확히 같은 minimum-jerk 시간창에서 3 mm 상승한다.
+    pitch_release_lift_impulse_height_m: 0.003
+
+logging:
+  output_directory: results/fried_rice_coupled_toss_preview_joint90

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 import gymnasium as gym
@@ -37,6 +38,8 @@ class TrainingResult:
     additional_timesteps: int = 0
     resume_from: Path | None = None
     resume_replay_buffer_from: Path | None = None
+    elapsed_time_s: float = 0.0
+    wall_time_limit_reached: bool = False
 
 
 class _EpisodeInfoCallback(BaseCallback):
@@ -45,10 +48,12 @@ class _EpisodeInfoCallback(BaseCallback):
     def __init__(
         self,
         consumer: Callable[[int, Mapping[str, Any]], None],
+        *,
+        episode_offset: int = 0,
     ) -> None:
         super().__init__(verbose=0)
         self._consumer = consumer
-        self._episode_id = 0
+        self._episode_id = int(episode_offset)
 
     def _on_step(self) -> bool:
         dones = self.locals.get("dones", ())
@@ -58,6 +63,39 @@ class _EpisodeInfoCallback(BaseCallback):
                 self._consumer(self._episode_id, info)
                 self._episode_id += 1
         return True
+
+
+class _WallClockStopCallback(BaseCallback):
+    """지정된 학습 wall-clock 시간이 지나면 다음 vector step에서 정상 종료한다."""
+
+    def __init__(
+        self,
+        max_wall_time_s: float,
+        *,
+        clock: Callable[[], float] = monotonic,
+    ) -> None:
+        super().__init__(verbose=0)
+        self.max_wall_time_s = float(max_wall_time_s)
+        if not np.isfinite(self.max_wall_time_s) or self.max_wall_time_s <= 0.0:
+            raise ValueError("training.max_wall_time_s는 유한한 양수여야 합니다.")
+        self._clock = clock
+        self._start_time: float | None = None
+        self.elapsed_time_s = 0.0
+        self.limit_reached = False
+
+    def _on_training_start(self) -> None:
+        self._start_time = self._clock()
+
+    def _on_step(self) -> bool:
+        if self._start_time is None:
+            self._start_time = self._clock()
+        self.elapsed_time_s = max(0.0, self._clock() - self._start_time)
+        self.limit_reached = self.elapsed_time_s >= self.max_wall_time_s
+        return not self.limit_reached
+
+    def _on_training_end(self) -> None:
+        if self._start_time is not None:
+            self.elapsed_time_s = max(0.0, self._clock() - self._start_time)
 
 
 class _ScheduledCountWrapper(gym.Wrapper):
@@ -71,6 +109,7 @@ class _ScheduledCountWrapper(gym.Wrapper):
         nominal_joint_speed_target_schedule: Sequence[float] = (),
         rank: int,
         stride: int,
+        episode_offset: int = 0,
     ) -> None:
         super().__init__(environment)
         self._schedule = tuple(int(item) for item in schedule)
@@ -81,6 +120,7 @@ class _ScheduledCountWrapper(gym.Wrapper):
             raise ValueError("count 또는 nominal joint speed target schedule이 필요합니다.")
         self._rank = int(rank)
         self._stride = int(stride)
+        self._episode_offset = int(episode_offset)
         self._local_episode = 0
 
     def reset(
@@ -90,7 +130,9 @@ class _ScheduledCountWrapper(gym.Wrapper):
         options: dict[str, Any] | None = None,
     ) -> tuple[Any, dict[str, Any]]:
         resolved_options = {} if options is None else dict(options)
-        global_episode = self._local_episode * self._stride + self._rank
+        global_episode = (
+            self._episode_offset + self._local_episode * self._stride + self._rank
+        )
         if self._schedule and "count_per_type" not in resolved_options:
             resolved_options["count_per_type"] = self._schedule[
                 global_episode % len(self._schedule)
@@ -273,6 +315,7 @@ def _make_monitored_environment(
     nominal_joint_speed_target_schedule: Sequence[float] = (),
     rank: int = 0,
     stride: int = 1,
+    episode_offset: int = 0,
 ) -> Monitor:
     """SubprocVecEnv의 Windows spawn에서도 직렬화 가능한 환경 factory."""
 
@@ -284,6 +327,7 @@ def _make_monitored_environment(
             nominal_joint_speed_target_schedule=nominal_joint_speed_target_schedule,
             rank=rank,
             stride=stride,
+            episode_offset=episode_offset,
         )
     return Monitor(environment)
 
@@ -311,6 +355,14 @@ def train_sac(
     if steps <= 0:
         raise ValueError("total_timesteps는 1 이상이어야 합니다.")
     seed = int(training.get("seed", 0))
+    raw_episode_offset = training.get("episode_offset", 0)
+    episode_offset = int(raw_episode_offset)
+    if (
+        isinstance(raw_episode_offset, bool)
+        or episode_offset != raw_episode_offset
+        or episode_offset < 0
+    ):
+        raise ValueError("training.episode_offset은 0 이상의 정수여야 합니다.")
     if checkpoint_path is None:
         checkpoint_path = Path(str(training.get("checkpoint_directory", "checkpoints"))) / "sac_wok"
     checkpoint = Path(checkpoint_path)
@@ -353,18 +405,21 @@ def train_sac(
             config,
             count_schedule=count_schedule,
             nominal_joint_speed_target_schedule=nominal_joint_speed_target_schedule,
+            episode_offset=episode_offset,
         )
     else:
         environment = SubprocVecEnv(
             [
                 lambda rank=rank, config=config, count_schedule=count_schedule,
-                speed_schedule=nominal_joint_speed_target_schedule: (
+                speed_schedule=nominal_joint_speed_target_schedule,
+                episode_offset=episode_offset: (
                     _make_monitored_environment(
                         config,
                         count_schedule=count_schedule,
                         nominal_joint_speed_target_schedule=speed_schedule,
                         rank=rank,
                         stride=parallel_environments,
+                        episode_offset=episode_offset,
                     )
                 )
                 for rank in range(parallel_environments)
@@ -374,10 +429,21 @@ def train_sac(
     evaluation_environment: VecEnv | None = None
     resolved_evaluation_directory: Path | None = None
     actual_timesteps = 0
+    wall_clock_callback: _WallClockStopCallback | None = None
+    training_start = monotonic()
     try:
         callbacks: list[BaseCallback] = []
         if episode_consumer is not None:
-            callbacks.append(_EpisodeInfoCallback(episode_consumer))
+            callbacks.append(
+                _EpisodeInfoCallback(
+                    episode_consumer,
+                    episode_offset=episode_offset,
+                )
+            )
+        max_wall_time = training.get("max_wall_time_s")
+        if max_wall_time is not None:
+            wall_clock_callback = _WallClockStopCallback(float(max_wall_time))
+            callbacks.append(wall_clock_callback)
 
         checkpoint_interval = int(training.get("checkpoint_interval", 0))
         if checkpoint_interval < 0:
@@ -525,13 +591,23 @@ def train_sac(
     # SB3는 suffix가 전혀 없을 때만 ".zip"을 덧붙인다. 예를 들어
     # "agent.custom"은 ZIP 컨테이너이지만 파일명은 그대로 보존된다.
     actual_path = checkpoint if checkpoint.suffix else Path(f"{checkpoint}.zip")
+    elapsed_time_s = (
+        float(wall_clock_callback.elapsed_time_s)
+        if wall_clock_callback is not None
+        else max(0.0, monotonic() - training_start)
+    )
     return TrainingResult(
         actual_path,
         actual_timesteps,
         seed,
         resolved_evaluation_directory,
         initial_timesteps,
-        steps,
+        actual_timesteps - initial_timesteps,
         resolved_resume,
         resolved_replay_buffer,
+        elapsed_time_s,
+        bool(
+            wall_clock_callback is not None
+            and wall_clock_callback.limit_reached
+        ),
     )

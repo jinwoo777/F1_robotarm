@@ -1,0 +1,55 @@
+{
+  "bundle": "fried_rice_coupled_toss_joint90_600_frozen_20260726",
+  "source_run": "results/fried_rice_coupled_toss_joint90_additional_300/20260726_172652_352392",
+  "training": {
+    "initial_timesteps": 300,
+    "additional_timesteps": 300,
+    "total_timesteps": 600,
+    "episode_id_range": [0, 599],
+    "additional_episode_id_range": [300, 599],
+    "parallel_environments": 6,
+    "nominal_joint_speed_target": 0.9,
+    "action_layout": "pitch_release_6d",
+    "action_shape": [6],
+    "observation_shape": [2]
+  },
+  "model": {
+    "path": "sac_wok_600_frozen.zip",
+    "num_timesteps": 600,
+    "sha256": "49E787525ABF222EF29D58848251D83B873DCEEC642F82C33B42EC88DD0B998F"
+  },
+  "replay_buffer": {
+    "path": "replay_buffer_600_complete.pkl",
+    "vector_rows": 100,
+    "parallel_environments": 6,
+    "transitions": 600,
+    "sha256": "701481AE81343E86FFBC067C23724865C64AF3461EFDB52CC181202D8A000191"
+  },
+  "replay_completion": {
+    "source_checkpoint_buffer_transitions": 594,
+    "added_episode_ids": [594, 595, 596, 597, 598, 599],
+    "validation": "Episodes 588-593 reconstructed from the training CSV matched the preceding stored vector row for observations, next observations, actions, rewards, and dones with absolute tolerance 1e-7."
+  },
+  "effective_config": {
+    "path": "effective_config_600.yaml",
+    "sha256": "D1926B77CF9B5CAA0D09E0606FB0DCF1323A5EA2B50E40F223F8754D0C69F664"
+  },
+  "metadata": {
+    "path": "metadata_600.json",
+    "sha256": "31D29BD52E31E370D45658C44DF896751817CAAB45F9995881899FC6441A6C57"
+  },
+  "additional_300_summary": {
+    "episodes": 300,
+    "grain_strata": {
+      "60": 100,
+      "90": 100,
+      "120": 100
+    },
+    "mean_reward": -0.2346705659720655,
+    "final_60_mean_reward": 0.6715785050963227,
+    "best_reward": 1.4989741172716606,
+    "best_reward_episode": 362,
+    "valid_trajectories": 289,
+    "toss_successes": 0
+  }
+}

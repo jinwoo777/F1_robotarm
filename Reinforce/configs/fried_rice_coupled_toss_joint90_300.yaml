@@ -1,0 +1,40 @@
+base_config: fried_rice_coupled_toss_preview_joint90.yaml
+
+# 사용자가 승인한 300-episode 진단 학습.
+# 모든 episode에서 M0609 joint/TCP speed target을 90%로 고정한다.
+training:
+  total_timesteps: 300
+  max_wall_time_s: 28800
+  count_per_type_schedule: [20, 30, 40]
+  episodes_per_count: 100
+  nominal_joint_speed_target_schedule: [0.90]
+  episodes_per_speed_target: 300
+  # speed가 상수이므로 정책에 별도 speed context를 넣지 않는다.
+  observation_nominal_joint_speed_target: false
+  parallel_environments: 6
+  learning_starts: 60
+  checkpoint_interval: 60
+  checkpoint_save_replay_buffer: true
+  checkpoint_directory: checkpoints/fried_rice_coupled_toss_joint90_300
+  seed: 61
+  lift_approach_curriculum:
+    enabled: true
+    initial_episodes: 24
+    transition_episodes: 60
+    initial_multiplier: 1.0
+    transition_start_multiplier: 1.0
+    final_multiplier: 0.0
+  toss_curriculum:
+    enabled: true
+    initial_episodes: 24
+    transition_episodes: 60
+    initial_goal_ratio: 0.10
+    final_goal_ratio: 0.20
+    initial_spill_ratio: 0.10
+    final_spill_ratio: 0.05
+    initial_bonus: 2.0
+    final_bonus: 5.0
+
+logging:
+  output_directory: results/fried_rice_coupled_toss_joint90_300
+  save_particle_trajectories: false

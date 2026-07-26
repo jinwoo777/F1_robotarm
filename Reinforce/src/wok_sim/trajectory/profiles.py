@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from .fried_rice import FRIED_RICE_ACTION_NAMES, generate_fried_rice_trajectory
+from .fried_rice import fried_rice_action_names, generate_fried_rice_trajectory
 from .parameters import ACTION_NAMES
 from .spline import Trajectory, generate_trajectory
 
@@ -39,7 +39,7 @@ def action_names_for_config(config: Mapping[str, Any] | Any) -> tuple[str, ...]:
     """선택된 profile의 정규화 action 순서를 반환한다."""
 
     return (
-        FRIED_RICE_ACTION_NAMES
+        fried_rice_action_names(config)
         if trajectory_profile(config) == FRIED_RICE_PROFILE
         else ACTION_NAMES
     )

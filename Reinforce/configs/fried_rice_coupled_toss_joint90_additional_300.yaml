@@ -1,0 +1,21 @@
+base_config: fried_rice_coupled_toss_joint90_300.yaml
+
+# 기존 300-step SAC와 replay buffer에서 episode 301~600을 연속 학습한다.
+# 기존 run을 덮어쓰지 않으며 모든 episode의 M0609 속도 목표는 90%로 유지한다.
+training:
+  total_timesteps: 300
+  episode_offset: 300
+  max_wall_time_s: 28800
+  count_per_type_schedule: [20, 30, 40]
+  episodes_per_count: 100
+  nominal_joint_speed_target_schedule: [0.90]
+  episodes_per_speed_target: 300
+  observation_nominal_joint_speed_target: false
+  parallel_environments: 6
+  checkpoint_interval: 60
+  checkpoint_save_replay_buffer: true
+  checkpoint_directory: checkpoints/fried_rice_coupled_toss_joint90_additional_300
+
+logging:
+  output_directory: results/fried_rice_coupled_toss_joint90_additional_300
+  save_particle_trajectories: false

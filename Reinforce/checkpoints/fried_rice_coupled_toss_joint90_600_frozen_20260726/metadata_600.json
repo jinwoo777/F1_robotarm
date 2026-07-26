@@ -1,0 +1,53 @@
+{
+  "command": "train",
+  "algorithm": "SAC",
+  "checkpoint": "checkpoints\\fried_rice_coupled_toss_joint90_additional_300\\sac_wok_600.zip",
+  "total_timesteps": 600,
+  "initial_timesteps": 300,
+  "additional_timesteps": 300,
+  "resume_from": "checkpoints\\fried_rice_coupled_toss_joint90_additional_300\\resume_source\\sac_wok_300_frozen.zip",
+  "resume_replay_buffer_from": "checkpoints\\fried_rice_coupled_toss_joint90_additional_300\\resume_source\\replay_buffer_300_complete.pkl",
+  "periodic_evaluation": null,
+  "action_names": [
+    "descent_angle",
+    "pan_tilt_angle",
+    "descent_speed",
+    "pitch_release_angle",
+    "pitch_release_phase_fraction",
+    "pitch_release_angular_acceleration"
+  ],
+  "count_per_type_schedule": [
+    20,
+    30,
+    40
+  ],
+  "episodes_per_count": 100,
+  "nominal_joint_speed_target_schedule": [
+    0.9
+  ],
+  "episodes_per_speed_target": 300,
+  "episode_offset": 300,
+  "parallel_environments": 6,
+  "random_walk": {
+    "enabled": true,
+    "step_std": [
+      0.05,
+      0.05,
+      0.03,
+      0.15,
+      0.1,
+      0.1
+    ],
+    "bound": [
+      0.25,
+      0.25,
+      0.2,
+      1.0,
+      0.75,
+      0.75
+    ],
+    "seed": 78
+  },
+  "m0609_validation": "per_episode_status_in_episodes_csv",
+  "real_robot_execution": "not_implemented"
+}

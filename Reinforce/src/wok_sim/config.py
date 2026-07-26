@@ -275,6 +275,57 @@ def validate_config(config: Mapping[str, Any]) -> None:
         lift_angle_low, lift_angle_high = _pair(profile, "lift_angle_range_rad")
         if lift_angle_low < 0.0 or lift_angle_high > np.pi / 2.0:
             raise ConfigError("fried_rice lift 각도는 0도 이상 90도 이하여야 합니다.")
+        action_layout = str(profile.get("action_layout", "legacy_4d")).strip().lower()
+        if action_layout in {"legacy", "4d"}:
+            action_layout = "legacy_4d"
+        elif action_layout in {"pitch_release", "6d"}:
+            action_layout = "pitch_release_6d"
+        if action_layout not in {"legacy_4d", "pitch_release_6d"}:
+            raise ConfigError(
+                "trajectory.fried_rice.action_layout은 'legacy_4d' 또는 "
+                "'pitch_release_6d'여야 합니다."
+            )
+        if action_layout == "pitch_release_6d":
+            release_low, release_high = _pair(
+                profile,
+                "pitch_release_angle_range_rad",
+            )
+            phase_low, phase_high = _pair(
+                profile,
+                "pitch_release_phase_fraction_range",
+            )
+            acceleration_low, acceleration_high = _pair(
+                profile,
+                "pitch_release_angular_acceleration_range_rad_s2",
+                positive=True,
+            )
+            base_lift = float(profile.get("pitch_release_base_lift_angle_rad", 0.0))
+            if (
+                release_low < 0.0
+                or release_high > np.pi / 2.0
+                or not 0.0 < phase_low <= phase_high < 1.0
+                or acceleration_high
+                > float(profile.get("angular_acceleration_limit_rad_s2", 0.0))
+                or not np.isfinite(base_lift)
+                or not 0.0 <= base_lift <= np.pi / 2.0
+            ):
+                raise ConfigError(
+                    "pitch release 범위는 angle=[0,pi/2], phase=(0,1), "
+                    "양수 acceleration(trajectory 한도 이하), base lift=[0,pi/2]여야 합니다."
+                )
+            if not bool(profile.get("hold_insertion_pitch_during_lift_retreat", False)):
+                raise ConfigError(
+                    "pitch_release_6d에는 "
+                    "hold_insertion_pitch_during_lift_retreat=true가 필요합니다."
+                )
+            if float(profile.get("hold_pitch_return_arc_height_m", 0.0)) != 0.0:
+                raise ConfigError(
+                    "pitch_release_6d에서는 hold_pitch_return_arc_height_m=0이어야 합니다."
+                )
+            if float(profile.get("hold_pitch_toss_impulse_height_m", 0.0)) != 0.0:
+                raise ConfigError(
+                    "pitch_release_6d에서는 hold_pitch_toss_impulse_height_m=0이어야 합니다."
+                )
         fixed_positive = (
             "insertion_distance_m",
             "angular_speed_rad_s",
@@ -371,14 +422,44 @@ def validate_config(config: Mapping[str, Any]) -> None:
             pretilt = float(profile.get("pretilt_translation_fraction", 0.20))
             lift_return = float(profile.get("lift_return_translation_fraction", 0.65))
             arc_height = float(profile.get("lift_return_arc_height_m", 0.025))
+            hold_pitch_arc_height = float(
+                profile.get("hold_pitch_return_arc_height_m", 0.0)
+            )
+            toss_impulse_height = float(
+                profile.get("hold_pitch_toss_impulse_height_m", 0.0)
+            )
+            toss_impulse_fraction = float(
+                profile.get("hold_pitch_toss_impulse_phase_fraction", 0.25)
+            )
             if (
-                not np.isfinite([pretilt, lift_return, arc_height]).all()
+                not np.isfinite(
+                    [
+                        pretilt,
+                        lift_return,
+                        arc_height,
+                        hold_pitch_arc_height,
+                        toss_impulse_height,
+                        toss_impulse_fraction,
+                    ]
+                ).all()
                 or not 0.0 < pretilt < lift_return < 1.0
                 or arc_height <= 0.0
+                or hold_pitch_arc_height < 0.0
+                or toss_impulse_height < 0.0
+                or not 0.0 < toss_impulse_fraction < 1.0
             ):
                 raise ConfigError(
                     "continuous motion은 0 < pretilt_translation_fraction < "
-                    "lift_return_translation_fraction < 1 및 양수 arc height가 필요합니다."
+                    "lift_return_translation_fraction < 1, 양수 arc height 및 "
+                    "0 이상 hold-pitch arc height/impulse height와 (0,1) impulse "
+                    "phase fraction이 필요합니다."
+                )
+            if toss_impulse_height > 0.0 and not bool(
+                profile.get("hold_insertion_pitch_during_lift_retreat", False)
+            ):
+                raise ConfigError(
+                    "hold_pitch_toss_impulse_height_m은 "
+                    "hold_insertion_pitch_during_lift_retreat=true에서만 쓸 수 있습니다."
                 )
         if _pair(profile, "descent_speed_range_m_s", positive=True)[1] > float(
             trajectory.get("max_cartesian_velocity", 0.0)
@@ -421,6 +502,8 @@ def validate_config(config: Mapping[str, Any]) -> None:
 
     for key in (
         "w_mix",
+        "w_peak_toss",
+        "toss_success_bonus",
         "lift_reward_per_particle",
         "lift_approach_reward_per_particle",
         "w_spill",
@@ -432,6 +515,10 @@ def validate_config(config: Mapping[str, Any]) -> None:
         value = float(reward.get(key, 0.0))
         if not np.isfinite(value) or value < 0.0:
             raise ConfigError(f"reward.{key}는 유한한 0 이상 값이어야 합니다.")
+    for key in ("peak_toss_goal_ratio", "toss_success_spill_ratio"):
+        value = float(reward.get(key, 0.0))
+        if not np.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ConfigError(f"reward.{key}는 [0,1] 범위의 유한한 값이어야 합니다.")
     lift_top_margin = float(reward.get("lift_top_margin_m", 0.0))
     if not np.isfinite(lift_top_margin) or lift_top_margin < 0.0:
         raise ConfigError("reward.lift_top_margin_m은 유한한 0 이상 값이어야 합니다.")
@@ -554,6 +641,45 @@ def validate_config(config: Mapping[str, Any]) -> None:
             raise ConfigError(
                 "lift 접근 curriculum 뒤에 실제 보상만 쓰는 episode 구간이 필요합니다."
             )
+    toss_curriculum = training.get("toss_curriculum", {})
+    if toss_curriculum and not isinstance(toss_curriculum, Mapping):
+        raise ConfigError("training.toss_curriculum은 mapping이어야 합니다.")
+    if bool(toss_curriculum.get("enabled", False)):
+        initial_episodes = int(toss_curriculum.get("initial_episodes", 0))
+        transition_episodes = int(toss_curriculum.get("transition_episodes", 0))
+        total_timesteps = int(training.get("total_timesteps", 0))
+        if (
+            initial_episodes <= 0
+            or transition_episodes <= 1
+            or initial_episodes + transition_episodes >= total_timesteps
+        ):
+            raise ConfigError(
+                "toss curriculum은 양수 initial, 2 이상 transition 및 "
+                "그 뒤 final objective 구간이 필요합니다."
+            )
+        ratio_keys = (
+            "initial_goal_ratio",
+            "final_goal_ratio",
+            "initial_spill_ratio",
+            "final_spill_ratio",
+        )
+        ratios = tuple(float(toss_curriculum.get(key, np.nan)) for key in ratio_keys)
+        bonuses = (
+            float(toss_curriculum.get("initial_bonus", np.nan)),
+            float(toss_curriculum.get("final_bonus", np.nan)),
+        )
+        if (
+            not np.isfinite((*ratios, *bonuses)).all()
+            or any(not 0.0 <= value <= 1.0 for value in ratios)
+            or any(value < 0.0 for value in bonuses)
+        ):
+            raise ConfigError(
+                "toss curriculum ratio는 [0,1], bonus는 0 이상의 유한한 값이어야 합니다."
+            )
+    if "max_wall_time_s" in training:
+        max_wall_time_s = float(training["max_wall_time_s"])
+        if not np.isfinite(max_wall_time_s) or max_wall_time_s <= 0.0:
+            raise ConfigError("training.max_wall_time_s는 유한한 양수여야 합니다.")
 
 
 def _resolve_paths(config: dict[str, Any], config_path: Path) -> None:

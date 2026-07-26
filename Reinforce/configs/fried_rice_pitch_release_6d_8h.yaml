@@ -1,0 +1,90 @@
+base_config: fried_rice_m0609_cycle_pitch_hold_150.yaml
+
+# Simultaneous retained toss를 직접 최적화하는 fresh 6D SAC run.
+trajectory:
+  fried_rice:
+    action_layout: pitch_release_6d
+    pitch_release_angle_range_rad: [0.0, 0.20943951023931956]  # 0~12 deg
+    pitch_release_phase_fraction_range: [0.35, 0.65]
+    pitch_release_angular_acceleration_range_rad_s2: [0.45, 0.95]
+    pitch_release_base_lift_angle_rad: 0.0
+    hold_pitch_return_arc_height_m: 0.0
+    hold_pitch_toss_impulse_height_m: 0.0
+    hold_insertion_pitch_during_lift_retreat: true
+    hold_insertion_pitch_between_cycles: true
+    # release pulse가 joint retiming 전 P2→P4 안에 들어가도록 기준 시간을
+    # 확보한다. 실제 실행 시간은 아래 M0609 joint/TCP target retimer가
+    # 모든 축의 utilization 중 최댓값을 80~90%에 맞추며 다시 단축한다.
+    continuous_time_scale: 1.50
+    # 이전 M0609 speed-sweep와 동일한 speed-only 조건을 보존한다.
+    # 보수적 Cartesian acceleration/jerk cap을 뒤에서 다시 적용하면 joint
+    # target 80~90%가 18% 수준으로 낮아지므로 이 실험에서는 사용하지 않는다.
+    adaptive_robot_retiming: false
+
+reward:
+  mixing_reward_mode: improvement
+  w_mix: 1.0
+  w_peak_toss: 20.0
+  peak_toss_goal_ratio: 0.20
+  toss_success_spill_ratio: 0.05
+  toss_success_bonus: 5.0
+  lift_top_margin_m: 0.001
+  lift_reward_per_particle: 0.0
+  lift_approach_band_m: 0.040
+  lift_approach_reward_per_particle: 0.02
+  spill_severity_mode: max_count_mass
+  w_spill: 12.0
+  w_spill_quadratic: 40.0
+
+training:
+  # Wall-clock callback이 먼저 멈출 수 있는 hard maximum.
+  total_timesteps: 1500
+  max_wall_time_s: 22800
+  count_per_type_schedule: [20, 30, 40]
+  episodes_per_count: 500
+  nominal_joint_speed_target_schedule: [0.80, 0.82, 0.84, 0.86, 0.88, 0.90]
+  episodes_per_speed_target: 250
+  observation_nominal_joint_speed_target: true
+  condition_schedule_seed: 261
+  parallel_environments: 6
+  seed: 61
+  learning_starts: 60
+  buffer_size: 10000
+  batch_size: 64
+  gamma: 0.0
+  train_freq: 1
+  gradient_steps: 4
+  ent_coef: auto
+  evaluation_interval: 0
+  checkpoint_interval: 60
+  checkpoint_save_replay_buffer: true
+  checkpoint_directory: checkpoints/fried_rice_pitch_release_6d_8h
+  device: cpu
+  policy_kwargs:
+    net_arch: [128, 128]
+  lift_approach_curriculum:
+    enabled: true
+    initial_episodes: 120
+    transition_episodes: 300
+    initial_multiplier: 1.0
+    transition_start_multiplier: 1.0
+    final_multiplier: 0.0
+  toss_curriculum:
+    enabled: true
+    initial_episodes: 120
+    transition_episodes: 300
+    initial_goal_ratio: 0.10
+    final_goal_ratio: 0.20
+    initial_spill_ratio: 0.10
+    final_spill_ratio: 0.05
+    initial_bonus: 2.0
+    final_bonus: 5.0
+  random_walk:
+    enabled: true
+    step_std: [0.05, 0.05, 0.03, 0.15, 0.10, 0.10]
+    bound: [0.25, 0.25, 0.20, 1.00, 0.75, 0.75]
+    seed: 78
+
+logging:
+  output_directory: results/fried_rice_pitch_release_6d_8h
+  save_particle_trajectories: false

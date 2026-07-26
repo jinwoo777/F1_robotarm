@@ -1,0 +1,186 @@
+{
+  "gif": "C:\\Users\\derekdr\\F1_robotarm\\Reinforce\\results\\fried_rice_coupled_toss_joint90_additional_300\\best_safe_gifs_20fps\\best_120grain_ep389_joint90_20fps.gif",
+  "config": "C:\\Users\\derekdr\\F1_robotarm\\Reinforce\\results\\fried_rice_coupled_toss_joint90_additional_300\\20260726_172652_352392\\effective_config.yaml",
+  "source_selection_csv": "C:\\Users\\derekdr\\F1_robotarm\\Reinforce\\results\\fried_rice_coupled_toss_joint90_additional_300\\best_safe_gifs_20fps\\selected_training_episodes.csv",
+  "candidate_id": 389,
+  "selection_metrics": {
+    "peak_lifted_particle_count": 2,
+    "peak_lifted_particle_ratio": 0.0166666666666666,
+    "lifted_particle_count": 5,
+    "spill_count": 6,
+    "spill_count_ratio": 0.05,
+    "final_reward": -0.3119479597458605
+  },
+  "replay": {
+    "random_seed": 220822019,
+    "count_per_type": 40,
+    "particle_count": 120,
+    "normalized_action": [
+      0.9081804752349854,
+      0.6977311372756958,
+      -0.3192262649536133,
+      -1.0,
+      0.14983296394348145,
+      0.2928483486175537
+    ],
+    "action_parameters": {
+      "descent_angle": 0.9439055583492215,
+      "pan_tilt_angle": 0.6453758319897531,
+      "descent_speed": 0.41403868675231936,
+      "lift_angle": 0.0,
+      "insertion_distance": 0.25,
+      "tilt_recovery_angle": 0.0,
+      "linear_speed": 0.41403868675231936,
+      "angular_speed": 1.2,
+      "cycle_time": 1.8415119248030687,
+      "tilt_out_phase_duration": 0.5875209803983732,
+      "descent_phase_duration": 0.5336777385421684,
+      "partial_recovery_phase_duration": 0.2062323480139506,
+      "return_phase_duration": 0.5140808578485766,
+      "insert_phase_duration": 0.5336777385421684,
+      "tilt_phase_duration": 0.5875209803983732,
+      "insert_phase_ratio": 0.28980411766773645,
+      "tilt_phase_ratio": 0.3190427237994686,
+      "linear_acceleration_limit": 1.4,
+      "angular_acceleration_limit": 2.5,
+      "linear_jerk_limit": 15.0,
+      "angular_jerk_limit": 20.0,
+      "time_scale": 1.5,
+      "lift_return_time_factor": 0.875,
+      "adaptive_retiming_scale": 0.31425881602125805,
+      "effective_time_scale": 0.47138822403188707,
+      "pitch_release_angle": 0.0,
+      "pitch_release_phase_fraction": 0.5224749445915222,
+      "pitch_release_requested_angular_acceleration": 0.7732120871543884,
+      "pitch_release_effective_angular_acceleration": 7.829313701957044,
+      "pitch_release_half_duration": 0.0
+    },
+    "peak_lifted_particle_count": 2,
+    "peak_lifted_particle_ratio": 0.016666666666666666,
+    "lifted_particle_count": 5,
+    "spill_count": 6,
+    "spill_count_ratio": 0.05,
+    "final_reward": -0.31194795974586054
+  },
+  "coupled_pitch_lift": {
+    "lift_impulse_height_m": 0.003,
+    "synchronized_with_pitch_release": true
+  },
+  "m0609_nominal_joint_speed": {
+    "status": "within_nominal_90_percent_speed_envelope",
+    "target_fraction": 0.9,
+    "required_uniform_time_scale": 0.9987609211966095,
+    "tcp_offset_m": 0.4,
+    "tcp_offset_axis": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "q_teach_rad": [
+      -1.9392935735280386,
+      -0.2480845207238079,
+      -1.2506058493128482,
+      -0.5490521338106086,
+      1.6336533475145063,
+      -0.1149857643265979
+    ],
+    "joint_velocity_limits_rad_s": [
+      2.6179938779914944,
+      2.6179938779914944,
+      3.141592653589793,
+      3.9269908169872414,
+      3.9269908169872414,
+      3.9269908169872414
+    ],
+    "peak_joint_velocity_rad_s": [
+      0.912903886996137,
+      0.7852454719792574,
+      2.428134413032147,
+      0.2417394030500123,
+      1.3907847446662398,
+      0.25419234660798296
+    ],
+    "joint_velocity_utilization": [
+      0.3487035988397766,
+      0.2999416761744653,
+      0.7728991886512082,
+      0.06155843349678953,
+      0.3541604270246905,
+      0.06472954953406218
+    ],
+    "peak_joint_acceleration_rad_s2": [
+      7.427337644215107,
+      6.402339753427858,
+      20.49664110109707,
+      1.728660254605641,
+      8.265503549737721,
+      2.553288638790607
+    ],
+    "peak_tcp_linear_velocity_m_s": 0.6208695198080061,
+    "tcp_linear_velocity_limit_m_s": 1.0,
+    "tcp_linear_velocity_utilization": 0.6208695198080061,
+    "peak_tcp_angular_velocity_rad_s": 2.3532749795428822,
+    "tcp_angular_velocity_limit_rad_s": 2.6179938779914944,
+    "tcp_angular_velocity_utilization": 0.8988848290769486,
+    "limiting_quantity": "tcp_angular_velocity",
+    "limiting_utilization": 0.8988848290769486,
+    "minimum_joint_position_margin_rad": 0.27488778652609414,
+    "maximum_jacobian_condition_number": 11.570801449130208,
+    "maximum_ik_position_error_m": 1.9987171836359934e-07,
+    "maximum_ik_orientation_error_rad": 1.987973179009259e-07,
+    "ik_sample_count": 941,
+    "safety_status": "offline_speed_only_assumed_q_teach",
+    "joint_velocity_limits_deg_s": [
+      150.0,
+      150.0,
+      180.0,
+      225.0,
+      225.0,
+      225.0
+    ],
+    "peak_joint_velocity_deg_s": [
+      52.305539825966484,
+      44.991251426169796,
+      139.12185395721747,
+      13.850647536777645,
+      79.68609608055537,
+      14.564148645163991
+    ],
+    "peak_joint_acceleration_deg_s2": [
+      425.55510003216506,
+      366.82704688024444,
+      1174.3710292872386,
+      99.04493680091356,
+      473.5784689503717,
+      146.2926628814047
+    ],
+    "q_teach_deg": [
+      -111.113337,
+      -14.214196,
+      -71.65443700000002,
+      -31.458370000000002,
+      93.601442,
+      -6.588199
+    ],
+    "minimum_joint_position_margin_deg": 15.74991000763833,
+    "source": {
+      "joint_speed_spec": "Doosan M0609 V3 manual",
+      "kinematic_chain": "DoosanRobotics/doosan-robot2 ec9242546ec6202835900dbcd8498e2daabfa6a6",
+      "acceleration_limits": "not_manufacturer_verified"
+    }
+  },
+  "pan_rim_center_radius_m": 0.1175,
+  "pan_rim_z_m": 0.055,
+  "timing": {
+    "fps": 20,
+    "frame_count": 200,
+    "trajectory_dot_interval_s": 0.1,
+    "trajectory_dot_count": 101,
+    "simulation_duration_s": 9.950000000000001,
+    "motion_playback_duration_s": 9.95,
+    "gif_playback_duration_s": 10.0,
+    "final_frame_hold_s": 0.05,
+    "playback_speed_ratio": 1.0000000000000002,
+    "focus_on_pan_motion": true
+  }
+}

@@ -85,6 +85,13 @@ trajectory:
     pretilt_translation_fraction: 0.20
     lift_return_translation_fraction: 0.65
     lift_return_arc_height_m: 0.025
+    # hold-insertion-pitch 분기에서만 쓰는 추가 복귀 z arc.
+    # 0은 기존 궤적과 완전히 호환되며, 물리 타당성 확인 뒤 학습 축으로 승격한다.
+    hold_pitch_return_arc_height_m: 0.0
+    # P2 직후 상향 충격을 만드는 opt-in waypoint. 0이면 waypoint도 생성하지 않아
+    # 기존 궤적과 동일하다. fraction은 P2→P3 복귀 구간 안의 impulse 시점이다.
+    hold_pitch_toss_impulse_height_m: 0.0
+    hold_pitch_toss_impulse_phase_fraction: 0.25
     # 삽입 후 P2→P3 lift/후퇴 동안 팬 pitch는 삽입 각도를 유지한다.
     # 4번째 action(0~30 deg)은 팬 각도 복원이 아니라 직선 후퇴 경로에
     # 더하는 상승각이다. 0 deg에서는 추가 lift arc가 없는 복귀가 가능하다.

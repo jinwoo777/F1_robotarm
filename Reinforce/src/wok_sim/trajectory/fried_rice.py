@@ -12,9 +12,12 @@ from wok_sim.geometry.transforms import resolve_wok_frame_context, transform_to_
 
 from .parameters import trajectory_section
 from .spline import (
+    CoupledPitchLiftImpulseSpline,
     GlobalQuinticSpline,
     PhasewiseMinimumJerkSpline,
     PitchHoldGlobalSpline,
+    PitchHoldTossImpulseSpline,
+    PitchReleaseImpulseSpline,
     SplineGenerationError,
     Trajectory,
 )
@@ -28,15 +31,43 @@ FRIED_RICE_ACTION_NAMES: tuple[str, ...] = (
 )
 """볶음밥 profile의 normalized action 순서."""
 
+PITCH_RELEASE_ACTION_NAMES: tuple[str, ...] = (
+    "descent_angle",
+    "pan_tilt_angle",
+    "descent_speed",
+    "pitch_release_angle",
+    "pitch_release_phase_fraction",
+    "pitch_release_angular_acceleration",
+)
+"""회복 구간 pitch release impulse를 직접 제어하는 6D action 순서."""
+
+_LEGACY_ACTION_LAYOUT = "legacy_4d"
+_PITCH_RELEASE_ACTION_LAYOUT = "pitch_release_6d"
 
 _DEFAULT_RANGES: dict[str, tuple[float, float]] = {
     "descent_angle_range_rad": (np.deg2rad(35.0), np.deg2rad(55.0)),
     "pan_tilt_angle_range_rad": (np.deg2rad(20.0), np.deg2rad(40.0)),
     "descent_speed_range_m_s": (0.38, 0.48),
     "lift_angle_range_rad": (0.0, np.deg2rad(30.0)),
+    "pitch_release_angle_range_rad": (0.0, np.deg2rad(12.0)),
+    "pitch_release_phase_fraction_range": (0.35, 0.65),
+    "pitch_release_angular_acceleration_range_rad_s2": (0.45, 0.95),
 }
 
-_ACTION_RANGE_KEYS: tuple[str, ...] = tuple(_DEFAULT_RANGES)
+_LEGACY_ACTION_RANGE_KEYS: tuple[str, ...] = (
+    "descent_angle_range_rad",
+    "pan_tilt_angle_range_rad",
+    "descent_speed_range_m_s",
+    "lift_angle_range_rad",
+)
+_PITCH_RELEASE_ACTION_RANGE_KEYS: tuple[str, ...] = (
+    "descent_angle_range_rad",
+    "pan_tilt_angle_range_rad",
+    "descent_speed_range_m_s",
+    "pitch_release_angle_range_rad",
+    "pitch_release_phase_fraction_range",
+    "pitch_release_angular_acceleration_range_rad_s2",
+)
 _MINIMUM_JERK_PEAK_VELOCITY = 1.875
 _MINIMUM_JERK_PEAK_ACCELERATION = 5.773502691896258
 _MINIMUM_JERK_PEAK_JERK = 60.0
@@ -96,6 +127,9 @@ class FriedRiceParameters:
     time_scale: float = 1.0
     lift_return_time_factor: float = 1.0
     adaptive_retiming_scale: float = 1.0
+    pitch_release_angle: float = 0.0
+    pitch_release_phase_fraction: float = 0.50
+    pitch_release_angular_acceleration: float = 0.70
 
     def __post_init__(self) -> None:
         values = np.asarray(
@@ -114,6 +148,9 @@ class FriedRiceParameters:
                 self.time_scale,
                 self.lift_return_time_factor,
                 self.adaptive_retiming_scale,
+                self.pitch_release_angle,
+                self.pitch_release_phase_fraction,
+                self.pitch_release_angular_acceleration,
             ),
             dtype=float,
         )
@@ -148,6 +185,14 @@ class FriedRiceParameters:
         if self.lift_return_time_factor > 1.0:
             raise FriedRiceTrajectoryError(
                 "lift_return_time_factor는 0 초과 1 이하여야 합니다."
+            )
+        if self.pitch_release_angle < 0.0 or self.pitch_release_angle > np.pi / 2.0:
+            raise FriedRiceTrajectoryError(
+                "pitch_release_angle은 0도 이상 90도 이하여야 합니다."
+            )
+        if not 0.0 < self.pitch_release_phase_fraction < 1.0:
+            raise FriedRiceTrajectoryError(
+                "pitch_release_phase_fraction은 (0,1)이어야 합니다."
             )
 
     @property
@@ -254,6 +299,26 @@ class FriedRiceParameters:
         return self.cycle_time
 
     @property
+    def pitch_release_half_duration_s(self) -> float:
+        """요청 각가속도와 전역 retiming을 반영한 half-pulse 시간."""
+
+        if self.pitch_release_angle <= 0.0:
+            return 0.0
+        base_duration = np.sqrt(
+            _MINIMUM_JERK_PEAK_ACCELERATION
+            * self.pitch_release_angle
+            / self.pitch_release_angular_acceleration
+        )
+        return float(base_duration * self.adaptive_retiming_scale)
+
+    @property
+    def pitch_release_effective_angular_acceleration(self) -> float:
+        """전역 retiming 뒤 실제 minimum-jerk peak 각가속도."""
+
+        scale = self.adaptive_retiming_scale
+        return float(self.pitch_release_angular_acceleration / scale**2)
+
+    @property
     def insert_phase_ratio(self) -> float:
         return self.phase_durations_s[1] / self.cycle_time
 
@@ -303,6 +368,15 @@ class FriedRiceParameters:
             "lift_return_time_factor": self.lift_return_time_factor,
             "adaptive_retiming_scale": self.adaptive_retiming_scale,
             "effective_time_scale": self.time_scale * self.adaptive_retiming_scale,
+            "pitch_release_angle": self.pitch_release_angle,
+            "pitch_release_phase_fraction": self.pitch_release_phase_fraction,
+            "pitch_release_requested_angular_acceleration": (
+                self.pitch_release_angular_acceleration
+            ),
+            "pitch_release_effective_angular_acceleration": (
+                self.pitch_release_effective_angular_acceleration
+            ),
+            "pitch_release_half_duration": self.pitch_release_half_duration_s,
         }
 
     @classmethod
@@ -361,6 +435,21 @@ class FriedRiceParameters:
             "time_scale": (("time_scale", "continuous_time_scale"), 1.0),
             "lift_return_time_factor": (("lift_return_time_factor",), 1.0),
             "adaptive_retiming_scale": (("adaptive_retiming_scale",), 1.0),
+            "pitch_release_angle": (
+                ("pitch_release_angle", "pitch_release_angle_rad"),
+                0.0,
+            ),
+            "pitch_release_phase_fraction": (
+                ("pitch_release_phase_fraction",),
+                0.50,
+            ),
+            "pitch_release_angular_acceleration": (
+                (
+                    "pitch_release_angular_acceleration",
+                    "pitch_release_angular_acceleration_rad_s2",
+                ),
+                0.70,
+            ),
         }
         for name, (candidates, default) in optional.items():
             raw = default
@@ -379,10 +468,16 @@ def map_fried_rice_action(
     *,
     clip: bool = True,
 ) -> FriedRiceParameters:
-    """4D action을 하강 각도, 최대 팬 tilt, 하강 속도, lift 회전량으로 변환한다."""
+    """설정된 4D legacy 또는 6D pitch-release action을 물리값으로 변환한다."""
 
     normalized = np.asarray(action, dtype=float)
-    expected = len(FRIED_RICE_ACTION_NAMES)
+    layout = fried_rice_action_layout(config)
+    range_keys = (
+        _PITCH_RELEASE_ACTION_RANGE_KEYS
+        if layout == _PITCH_RELEASE_ACTION_LAYOUT
+        else _LEGACY_ACTION_RANGE_KEYS
+    )
+    expected = len(range_keys)
     if normalized.shape != (expected,):
         raise FriedRiceTrajectoryError(
             f"볶음밥 action shape은 ({expected},)여야 합니다: {normalized.shape}"
@@ -394,14 +489,19 @@ def map_fried_rice_action(
     normalized = np.clip(normalized, -1.0, 1.0)
 
     physical = []
-    for value, key in zip(normalized, _ACTION_RANGE_KEYS, strict=True):
+    for value, key in zip(normalized, range_keys, strict=True):
         low, high = _range_from_profile(config, key)
         physical.append(low + 0.5 * (value + 1.0) * (high - low))
+    pitch_release = layout == _PITCH_RELEASE_ACTION_LAYOUT
     return FriedRiceParameters(
         descent_angle=physical[0],
         pan_tilt_angle=physical[1],
         linear_speed=physical[2],
-        tilt_recovery_angle=physical[3],
+        tilt_recovery_angle=(
+            _profile_number(config, "pitch_release_base_lift_angle_rad", 0.0)
+            if pitch_release
+            else physical[3]
+        ),
         insertion_distance=_profile_number(config, "insertion_distance_m", 0.25),
         angular_speed=_profile_number(config, "angular_speed_rad_s", 1.20),
         linear_acceleration_limit=_profile_number(
@@ -427,6 +527,41 @@ def map_fried_rice_action(
             "lift_return_time_factor",
             1.0,
         ),
+        pitch_release_angle=(physical[3] if pitch_release else 0.0),
+        pitch_release_phase_fraction=(physical[4] if pitch_release else 0.50),
+        pitch_release_angular_acceleration=(physical[5] if pitch_release else 0.70),
+    )
+
+
+def fried_rice_action_layout(config: Any) -> str:
+    """볶음밥 action layout을 canonical 이름으로 반환한다."""
+
+    raw = str(_lookup(fried_rice_section(config), "action_layout", _LEGACY_ACTION_LAYOUT))
+    layout = raw.strip().lower()
+    aliases = {
+        "legacy": _LEGACY_ACTION_LAYOUT,
+        "4d": _LEGACY_ACTION_LAYOUT,
+        _LEGACY_ACTION_LAYOUT: _LEGACY_ACTION_LAYOUT,
+        "pitch_release": _PITCH_RELEASE_ACTION_LAYOUT,
+        "6d": _PITCH_RELEASE_ACTION_LAYOUT,
+        _PITCH_RELEASE_ACTION_LAYOUT: _PITCH_RELEASE_ACTION_LAYOUT,
+    }
+    try:
+        return aliases[layout]
+    except KeyError as exc:
+        raise FriedRiceTrajectoryError(
+            "trajectory.fried_rice.action_layout은 'legacy_4d' 또는 "
+            "'pitch_release_6d'여야 합니다."
+        ) from exc
+
+
+def fried_rice_action_names(config: Any) -> tuple[str, ...]:
+    """설정된 볶음밥 action 이름을 반환한다."""
+
+    return (
+        PITCH_RELEASE_ACTION_NAMES
+        if fried_rice_action_layout(config) == _PITCH_RELEASE_ACTION_LAYOUT
+        else FRIED_RICE_ACTION_NAMES
     )
 
 
@@ -636,6 +771,11 @@ def build_fried_rice_cycle_waypoints(
         pretilt_progress = _profile_number(config, "pretilt_translation_fraction", 0.20)
         return_progress = _profile_number(config, "lift_return_translation_fraction", 0.65)
         return_arc_height = _profile_number(config, "lift_return_arc_height_m", 0.025)
+        hold_pitch_return_arc_height = _profile_number(
+            config,
+            "hold_pitch_return_arc_height_m",
+            0.0,
+        )
         hold_insertion_pitch = bool(
             _lookup(
                 fried_rice_section(config),
@@ -651,6 +791,11 @@ def build_fried_rice_cycle_waypoints(
         if return_arc_height <= 0.0:
             raise FriedRiceTrajectoryError(
                 "trajectory.fried_rice.lift_return_arc_height_m은 양수여야 합니다."
+            )
+        if hold_pitch_return_arc_height < 0.0:
+            raise FriedRiceTrajectoryError(
+                "trajectory.fried_rice.hold_pitch_return_arc_height_m은 "
+                "0 이상이어야 합니다."
             )
         p1 = PanPose(
             p0.x + pretilt_progress * descent_x,
@@ -677,6 +822,7 @@ def build_fried_rice_cycle_waypoints(
                 p0.z
                 + return_progress * descent_z
                 + retreat_distance_x * np.tan(parameters.tilt_recovery_angle)
+                + hold_pitch_return_arc_height
             )
             p3_pitch = p0.pitch + maximum_pitch
         else:
@@ -860,11 +1006,66 @@ def generate_fried_rice_trajectory(
                     False,
                 )
             )
-            spline = (
-                PitchHoldGlobalSpline.from_waypoints(waypoints)
-                if hold_insertion_pitch
-                else GlobalQuinticSpline.from_waypoints(waypoints)
+            toss_impulse_height = _profile_number(
+                config,
+                "hold_pitch_toss_impulse_height_m",
+                0.0,
             )
+            toss_impulse_fraction = _profile_number(
+                config,
+                "hold_pitch_toss_impulse_phase_fraction",
+                0.25,
+            )
+            coupled_lift_height = _profile_number(
+                config,
+                "pitch_release_lift_impulse_height_m",
+                0.0,
+            )
+            if coupled_lift_height < 0.0:
+                raise SplineGenerationError(
+                    "pitch_release_lift_impulse_height_m은 0 이상이어야 합니다."
+                )
+            if resolved_parameters.pitch_release_angle > 0.0:
+                if not hold_insertion_pitch:
+                    raise SplineGenerationError(
+                        "pitch release impulse에는 insertion pitch hold가 필요합니다."
+                    )
+                tilt_direction = _profile_number(config, "tilt_direction", 1.0)
+                release_kwargs = {
+                    "release_angle_rad": (
+                        tilt_direction * resolved_parameters.pitch_release_angle
+                    ),
+                    "release_phase_fraction": (
+                        resolved_parameters.pitch_release_phase_fraction
+                    ),
+                    "half_duration_s": (
+                        resolved_parameters.pitch_release_half_duration_s
+                    ),
+                }
+                if coupled_lift_height > 0.0:
+                    spline = CoupledPitchLiftImpulseSpline.from_waypoints(
+                        waypoints,
+                        resolved_parameters,
+                        lift_height_m=coupled_lift_height,
+                        **release_kwargs,
+                    )
+                else:
+                    spline = PitchReleaseImpulseSpline.from_waypoints(
+                        waypoints,
+                        resolved_parameters,
+                        **release_kwargs,
+                    )
+            elif hold_insertion_pitch and toss_impulse_height > 0.0:
+                spline = PitchHoldTossImpulseSpline.from_waypoints(
+                    waypoints,
+                    resolved_parameters,
+                    impulse_height_m=toss_impulse_height,
+                    impulse_phase_fraction=toss_impulse_fraction,
+                )
+            elif hold_insertion_pitch:
+                spline = PitchHoldGlobalSpline.from_waypoints(waypoints)
+            else:
+                spline = GlobalQuinticSpline.from_waypoints(waypoints)
         else:
             spline = PhasewiseMinimumJerkSpline.from_waypoints(waypoints)
         return spline.sample(resolved_parameters, float(rate), frame_context)
@@ -961,6 +1162,41 @@ def generate_fried_rice_trajectory(
                 )
             if joint_report is None:
                 raise SplineGenerationError("M0609 joint speed report를 만들지 못했습니다.")
+            # Joint target retiming은 빠른 target에서 전체 시간을 줄일 수 있다.
+            # 두 retimer를 함께 쓸 때는 마지막에 Cartesian hard cap을 다시
+            # 적용해 speed target보다 안전 한계를 우선한다.
+            if retiming_enabled:
+                for _ in range(3):
+                    required = _required_adaptive_scale(
+                        sampled,
+                        cap_fraction=cap_fraction,
+                        jerk_cap_fraction=jerk_cap_fraction,
+                        caps=caps,
+                    )
+                    if required <= 1.002:
+                        break
+                    next_scale = (
+                        parameters.adaptive_retiming_scale * required * 1.001
+                    )
+                    if next_scale > maximum_scale:
+                        raise SplineGenerationError(
+                            "joint retiming 뒤 Cartesian cap에 필요한 time scale "
+                            f"{next_scale:.6g}가 adaptive_max_time_scale="
+                            f"{maximum_scale:.6g}를 초과합니다."
+                        )
+                    parameters = replace(
+                        parameters,
+                        adaptive_retiming_scale=next_scale,
+                    )
+                    sampled = sample(parameters)
+                else:
+                    raise SplineGenerationError(
+                        "joint retiming 뒤 adaptive retiming이 3회 안에 수렴하지 않았습니다."
+                    )
+                joint_report = evaluate_m0609_joint_speeds(
+                    sampled,
+                    resolved_joint_settings,
+                )
             sampled.joint_speed_report = joint_report.summary()
         except M0609JointSpeedError as exc:
             raise SplineGenerationError(f"M0609 joint speed retiming 실패: {exc}") from exc

@@ -87,6 +87,7 @@ class _CountScheduleProbeEnv(gym.Env[np.ndarray, np.ndarray]):
         selected = {} if options is None else dict(options)
         info: dict[str, Any] = {
             "count_per_type": int(selected["count_per_type"]),
+            "curriculum_episode": int(selected["curriculum_episode"]),
         }
         if "nominal_joint_speed_target_fraction" in selected:
             info["nominal_joint_speed_target_fraction"] = float(
@@ -190,6 +191,37 @@ def test_speed_and_particle_schedules_are_exact_and_cross_balanced() -> None:
         0.88: 25,
         0.90: 25,
     }
+
+
+def test_scheduled_conditions_continue_from_episode_offset() -> None:
+    train_module = importlib.import_module("wok_sim.training.train_sac")
+    workers = [
+        train_module._ScheduledCountWrapper(
+            _CountScheduleProbeEnv(),
+            [20, 30, 40],
+            nominal_joint_speed_target_schedule=[0.90, 0.90, 0.90],
+            rank=rank,
+            stride=2,
+            episode_offset=300,
+        )
+        for rank in range(2)
+    ]
+    try:
+        observed = [
+            workers[rank].reset()[1]
+            for _local_episode in range(2)
+            for rank in range(2)
+        ]
+    finally:
+        for worker in workers:
+            worker.close()
+
+    assert [item["curriculum_episode"] for item in observed] == [300, 301, 302, 303]
+    assert [item["count_per_type"] for item in observed] == [20, 30, 40, 20]
+    assert all(
+        item["nominal_joint_speed_target_fraction"] == pytest.approx(0.90)
+        for item in observed
+    )
 
 
 def test_parallel_training_builds_independent_reproducible_worker_random_walks(
@@ -371,18 +403,21 @@ def test_train_sac_resumes_checkpoint_and_replay_buffer_as_additional_timesteps(
     resume_replay_buffer = (
         tmp_path / "initial_agent_intermediate_replay_buffer_2_steps.pkl"
     )
+    consumed_ids: list[int] = []
 
     result = train_sac(
         {
             "training": {
                 **base_training,
                 "checkpoint_interval": 0,
+                "episode_offset": 2,
             }
         },
         checkpoint_path=tmp_path / "resumed_agent",
         resume_from=resume_checkpoint,
         resume_replay_buffer_from=resume_replay_buffer,
         total_timesteps=2,
+        episode_consumer=lambda episode_id, _info: consumed_ids.append(episode_id),
     )
 
     assert result.initial_timesteps == 2
@@ -392,6 +427,7 @@ def test_train_sac_resumes_checkpoint_and_replay_buffer_as_additional_timesteps(
     assert result.resume_replay_buffer_from == resume_replay_buffer
     resumed = SAC.load(result.checkpoint_path)
     assert resumed.num_timesteps == 4
+    assert consumed_ids == [2, 3]
 
 
 class _HistoryEnv:

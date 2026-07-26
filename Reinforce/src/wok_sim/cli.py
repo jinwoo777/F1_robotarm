@@ -150,6 +150,15 @@ def _episode_record(
         "pan_tilt_angle_rad": pan_tilt_angle,
         "lift_angle_rad": action.get("lift_angle", action.get("tilt_recovery_angle")),
         "tilt_recovery_angle_rad": action.get("tilt_recovery_angle"),
+        "pitch_release_angle_rad": action.get("pitch_release_angle"),
+        "pitch_release_phase_fraction": action.get("pitch_release_phase_fraction"),
+        "pitch_release_requested_angular_acceleration_rad_s2": action.get(
+            "pitch_release_requested_angular_acceleration"
+        ),
+        "pitch_release_effective_angular_acceleration_rad_s2": action.get(
+            "pitch_release_effective_angular_acceleration"
+        ),
+        "pitch_release_half_duration_s": action.get("pitch_release_half_duration"),
         "descent_speed_m_s": descent_speed,
         "lift_height_m": action.get("lift_height"),
         "backward_distance_m": action.get("backward_distance"),
@@ -190,6 +199,10 @@ def _episode_record(
         "lifted_particle_count": lift.get("lifted_particle_count"),
         "lifted_particle_ratio": lift.get("lifted_particle_ratio"),
         "peak_lifted_particle_ratio": lift.get("peak_lifted_particle_ratio"),
+        "peak_toss_goal_ratio": reward_signals.get("peak_toss_goal_ratio"),
+        "toss_success_spill_ratio": reward_signals.get("toss_success_spill_ratio"),
+        "toss_success_bonus": reward_signals.get("toss_success_bonus"),
+        "toss_success": bool(reward_signals.get("toss_success", False)),
         "lift_top_margin_m": lift.get("top_margin_m"),
         "lift_reward_per_particle": reward_signals.get("lift_reward_per_particle"),
         "lift_approach_particle_equivalents": reward_signals.get(
@@ -198,6 +211,8 @@ def _episode_record(
         "lift_approach_multiplier": reward_signals.get("lift_approach_multiplier"),
         "maximum_grain_top_clearance_m": lift.get("maximum_grain_top_clearance_m"),
         "mix_reward": reward_terms.get("mix"),
+        "peak_toss_reward": reward_terms.get("peak_toss"),
+        "toss_success_reward": reward_terms.get("toss_success"),
         "lift_approach_reward": reward_terms.get("lift_approach"),
         "lift_reward": reward_terms.get("lift"),
         "spill_reward": reward_terms.get("spill"),
@@ -470,6 +485,7 @@ def train(
             "nominal_joint_speed_target_schedule"
         ),
         "episodes_per_speed_target": training_config.get("episodes_per_speed_target"),
+        "episode_offset": training_config.get("episode_offset", 0),
         "parallel_environments": training_config.get("parallel_environments", 1),
         "random_walk": training_config.get("random_walk"),
     }

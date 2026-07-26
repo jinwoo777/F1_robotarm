@@ -97,6 +97,54 @@ def _lift_approach_curriculum(
     return "final_objective", final_multiplier
 
 
+def _toss_curriculum(
+    training_config: Mapping[str, Any],
+    reward_config: Mapping[str, Any],
+    episode_index: int | None,
+) -> tuple[str, float, float, float]:
+    """동시 toss 목표, 허용 유출과 성공 bonus curriculum을 계산한다."""
+
+    raw = training_config.get("toss_curriculum", {})
+    curriculum = raw if isinstance(raw, Mapping) else {}
+    final_goal = float(
+        curriculum.get(
+            "final_goal_ratio",
+            reward_config.get("peak_toss_goal_ratio", 0.20),
+        )
+    )
+    final_spill = float(
+        curriculum.get(
+            "final_spill_ratio",
+            reward_config.get("toss_success_spill_ratio", 0.05),
+        )
+    )
+    final_bonus = float(
+        curriculum.get(
+            "final_bonus",
+            reward_config.get("toss_success_bonus", 0.0),
+        )
+    )
+    if not bool(curriculum.get("enabled", False)) or episode_index is None:
+        return "final_objective", final_goal, final_spill, final_bonus
+    initial_episodes = int(curriculum.get("initial_episodes", 0))
+    transition_episodes = int(curriculum.get("transition_episodes", 0))
+    initial_goal = float(curriculum.get("initial_goal_ratio", final_goal))
+    initial_spill = float(curriculum.get("initial_spill_ratio", final_spill))
+    initial_bonus = float(curriculum.get("initial_bonus", final_bonus))
+    if episode_index < initial_episodes:
+        return "toss_warmup", initial_goal, initial_spill, initial_bonus
+    transition_index = episode_index - initial_episodes
+    if transition_index < transition_episodes:
+        progress = transition_index / float(max(1, transition_episodes - 1))
+        return (
+            "toss_anneal",
+            (1.0 - progress) * initial_goal + progress * final_goal,
+            (1.0 - progress) * initial_spill + progress * final_spill,
+            (1.0 - progress) * initial_bonus + progress * final_bonus,
+        )
+    return "final_objective", final_goal, final_spill, final_bonus
+
+
 class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
     """질량 context에 대해 trajectory parameter를 한 번 선택하는 Gym 환경.
 
@@ -724,13 +772,23 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 - float(reward_config.get("maximum_height_m", 0.30)),
             )
             height_penalty = float(reward_config.get("w_height", 0.0)) * excess
-        curriculum_stage, approach_multiplier = _lift_approach_curriculum(
+        approach_stage, approach_multiplier = _lift_approach_curriculum(
             _mapping(self.config.get("training", {})),
             self._curriculum_episode,
         )
+        curriculum_stage, toss_goal, toss_spill_limit, toss_bonus = _toss_curriculum(
+            _mapping(self.config.get("training", {})),
+            reward_config,
+            self._curriculum_episode,
+        )
+        if curriculum_stage == "final_objective":
+            curriculum_stage = approach_stage
         terms, reward_signals = compute_reward_terms(
             mixing_improvement=float(mixing_metrics["mixing_improvement"]),
             lifted_particle_count=int(lift_metrics["lifted_particle_count"]),
+            peak_lifted_particle_ratio=float(
+                lift_metrics["peak_lifted_particle_ratio"]
+            ),
             spill_mass_ratio=float(spill_metrics["spill_mass_ratio"]),
             spill_count_ratio=float(spill_metrics["spill_count_ratio"]),
             jerk_cost=float(costs["jerk_cost"]),
@@ -741,6 +799,9 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 lift_metrics["lift_approach_particle_equivalents"]
             ),
             lift_approach_multiplier=approach_multiplier,
+            peak_toss_goal_ratio=toss_goal,
+            toss_success_spill_ratio=toss_spill_limit,
+            toss_success_bonus=toss_bonus,
         )
         reward = float(sum(terms.values()))
         info = {
@@ -788,6 +849,12 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 "peak_lifted_particle_ratio": float(lift_metrics["peak_lifted_particle_ratio"]),
                 "lift_top_margin_m": float(lift_metrics["top_margin_m"]),
                 "lift_reward_per_particle": float(reward_signals["lift_reward_per_particle"]),
+                "peak_toss_goal_ratio": float(reward_signals["peak_toss_goal_ratio"]),
+                "toss_success_spill_ratio": float(
+                    reward_signals["toss_success_spill_ratio"]
+                ),
+                "toss_success_bonus": float(reward_signals["toss_success_bonus"]),
+                "toss_success": bool(reward_signals["toss_success"]),
                 "lift_approach_particle_equivalents": float(
                     reward_signals["lift_approach_particle_equivalents"]
                 ),
@@ -822,10 +889,18 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
         reward: float,
     ) -> dict[str, Any]:
         validation = None if trajectory is None else getattr(trajectory, "validation", None)
-        curriculum_stage, approach_multiplier = _lift_approach_curriculum(
+        approach_stage, approach_multiplier = _lift_approach_curriculum(
             _mapping(self.config.get("training", {})),
             self._curriculum_episode,
         )
+        reward_config = _mapping(self.config.get("reward", {}))
+        curriculum_stage, toss_goal, toss_spill_limit, toss_bonus = _toss_curriculum(
+            _mapping(self.config.get("training", {})),
+            reward_config,
+            self._curriculum_episode,
+        )
+        if curriculum_stage == "final_objective":
+            curriculum_stage = approach_stage
         reasons: list[str] = []
         if validation is not None:
             violations = getattr(validation, "violations", ())
@@ -853,6 +928,8 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 "mix": 0.0,
                 "lift_approach": 0.0,
                 "lift": 0.0,
+                "peak_toss": 0.0,
+                "toss_success": 0.0,
                 "spill": 0.0,
                 "jerk": 0.0,
                 "acceleration": 0.0,
@@ -873,6 +950,11 @@ class WokMixingEnv(gym.Env[np.ndarray, np.ndarray]):
                 "lift_reward_per_particle": float(
                     _mapping(self.config.get("reward", {})).get("lift_reward_per_particle", 0.0)
                 ),
+                "peak_lifted_particle_ratio": 0.0,
+                "peak_toss_goal_ratio": toss_goal,
+                "toss_success_spill_ratio": toss_spill_limit,
+                "toss_success_bonus": toss_bonus,
+                "toss_success": 0.0,
                 "spill_mass_ratio": 0.0,
                 "spill_count_ratio": 0.0,
                 "spill_severity": 0.0,

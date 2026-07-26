@@ -2,10 +2,13 @@
 
 from .fried_rice import (
     FRIED_RICE_ACTION_NAMES,
+    PITCH_RELEASE_ACTION_NAMES,
     FriedRiceParameters,
     FriedRiceTrajectoryError,
     build_fried_rice_cycle_waypoints,
     build_repeated_fried_rice_waypoints,
+    fried_rice_action_layout,
+    fried_rice_action_names,
     fried_rice_phase_times,
     fried_rice_section,
     generate_fried_rice_trajectory,
@@ -27,6 +30,7 @@ from .profiles import (
     trajectory_profile,
 )
 from .spline import (
+    CoupledPitchLiftImpulseSpline,
     GlobalQuinticSpline,
     PhasewiseMinimumJerkSpline,
     SplineGenerationError,
@@ -54,11 +58,13 @@ from .waypoints import (
 __all__ = [
     "ACTION_NAMES",
     "FRIED_RICE_ACTION_NAMES",
+    "PITCH_RELEASE_ACTION_NAMES",
     "FRIED_RICE_PROFILE",
     "LEGACY_PROFILE",
     "ActionMappingError",
     "FriedRiceParameters",
     "FriedRiceTrajectoryError",
+    "CoupledPitchLiftImpulseSpline",
     "GlobalQuinticSpline",
     "PhasewiseMinimumJerkSpline",
     "PanPose",
@@ -81,6 +87,8 @@ __all__ = [
     "fried_rice_phase_times",
     "fried_rice_section",
     "generate_fried_rice_trajectory",
+    "fried_rice_action_layout",
+    "fried_rice_action_names",
     "generate_configured_trajectory",
     "generate_trajectory",
     "map_action",

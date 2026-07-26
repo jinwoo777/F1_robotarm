@@ -163,13 +163,18 @@ def compute_reward_terms(
     acceleration_cost: float,
     height_penalty: float,
     reward_config: Mapping[str, Any],
+    peak_lifted_particle_ratio: float = 0.0,
     lift_approach_particle_equivalents: float = 0.0,
     lift_approach_multiplier: float = 0.0,
+    peak_toss_goal_ratio: float | None = None,
+    toss_success_spill_ratio: float | None = None,
+    toss_success_bonus: float | None = None,
 ) -> tuple[dict[str, float], dict[str, float | str]]:
-    """초기 대비 mixing, retained lift, 비선형 spill 감점을 합성한다."""
+    """mixing, 동시 retained toss, 조건부 성공 bonus와 spill 감점을 합성한다."""
 
     mix_delta = float(mixing_improvement)
     lift_count = float(lifted_particle_count)
+    peak_ratio = float(peak_lifted_particle_ratio)
     mass_ratio = float(spill_mass_ratio)
     count_ratio = float(spill_count_ratio)
     approach_equivalents = float(lift_approach_particle_equivalents)
@@ -178,6 +183,7 @@ def compute_reward_terms(
         [
             mix_delta,
             lift_count,
+            peak_ratio,
             mass_ratio,
             count_ratio,
             jerk_cost,
@@ -190,6 +196,8 @@ def compute_reward_terms(
         raise ValueError("reward 입력은 모두 유한해야 합니다.")
     if lift_count < 0.0 or not lift_count.is_integer():
         raise ValueError("lifted_particle_count는 0 이상의 정수여야 합니다.")
+    if not 0.0 <= peak_ratio <= 1.0:
+        raise ValueError("peak_lifted_particle_ratio는 [0,1] 범위여야 합니다.")
     if approach_equivalents < 0.0 or approach_multiplier < 0.0:
         raise ValueError("lift 접근 점수와 curriculum multiplier는 0 이상이어야 합니다.")
     if not 0.0 <= mass_ratio <= 1.0 or not 0.0 <= count_ratio <= 1.0:
@@ -217,14 +225,39 @@ def compute_reward_terms(
     approach_reward_per_particle = float(
         reward_config.get("lift_approach_reward_per_particle", 0.0)
     )
+    goal_ratio = float(
+        reward_config.get("peak_toss_goal_ratio", 0.20)
+        if peak_toss_goal_ratio is None
+        else peak_toss_goal_ratio
+    )
+    success_spill_ratio = float(
+        reward_config.get("toss_success_spill_ratio", 0.05)
+        if toss_success_spill_ratio is None
+        else toss_success_spill_ratio
+    )
+    success_bonus = float(
+        reward_config.get("toss_success_bonus", 0.0)
+        if toss_success_bonus is None
+        else toss_success_bonus
+    )
     if not np.isfinite(lift_reward_per_particle) or lift_reward_per_particle < 0.0:
         raise ValueError("lift_reward_per_particle은 유한한 0 이상 값이어야 합니다.")
     if not np.isfinite(approach_reward_per_particle) or approach_reward_per_particle < 0.0:
         raise ValueError(
             "lift_approach_reward_per_particle은 유한한 0 이상 값이어야 합니다."
         )
+    if (
+        not np.isfinite([goal_ratio, success_spill_ratio, success_bonus]).all()
+        or not 0.0 <= goal_ratio <= 1.0
+        or not 0.0 <= success_spill_ratio <= 1.0
+        or success_bonus < 0.0
+    ):
+        raise ValueError("toss 목표/유출 ratio와 성공 bonus가 유효하지 않습니다.")
+    toss_success = peak_ratio >= goal_ratio and count_ratio <= success_spill_ratio
     terms = {
         "mix": float(reward_config.get("w_mix", 1.0)) * mix_delta,
+        "peak_toss": float(reward_config.get("w_peak_toss", 0.0)) * peak_ratio,
+        "toss_success": success_bonus if toss_success else 0.0,
         "lift_approach": (
             approach_reward_per_particle * approach_multiplier * approach_equivalents
         ),
@@ -239,6 +272,11 @@ def compute_reward_terms(
         "mixing_reward_mode": mixing_mode,
         "mixing_delta": mix_delta,
         "lifted_particle_count": lift_count,
+        "peak_lifted_particle_ratio": peak_ratio,
+        "peak_toss_goal_ratio": goal_ratio,
+        "toss_success_spill_ratio": success_spill_ratio,
+        "toss_success_bonus": success_bonus,
+        "toss_success": float(toss_success),
         "lift_reward_per_particle": lift_reward_per_particle,
         "lift_approach_particle_equivalents": approach_equivalents,
         "lift_approach_multiplier": approach_multiplier,

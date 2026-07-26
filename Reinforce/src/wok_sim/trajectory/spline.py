@@ -554,6 +554,320 @@ class PitchHoldGlobalSpline:
         return _sample_spline(self, parameters, sample_rate_hz, frame_context)
 
 
+@dataclass(frozen=True, slots=True)
+class PitchReleaseImpulseSpline:
+    """pitch-hold spline에 회복 구간 한정 minimum-jerk release pulse를 더한다."""
+
+    waypoints: WaypointSequence
+    _base_spline: PitchHoldGlobalSpline
+    _parameters: Any
+    release_angle_rad: float
+    release_phase_fraction: float
+    half_duration_s: float
+
+    @classmethod
+    def from_waypoints(
+        cls,
+        waypoints: WaypointSequence,
+        parameters: Any,
+        *,
+        release_angle_rad: float,
+        release_phase_fraction: float,
+        half_duration_s: float,
+    ) -> PitchReleaseImpulseSpline:
+        angle = float(release_angle_rad)
+        fraction = float(release_phase_fraction)
+        half_duration = float(half_duration_s)
+        if not np.isfinite(angle) or angle == 0.0:
+            raise SplineGenerationError("pitch release angle은 0이 아닌 유한한 값이어야 합니다.")
+        if not np.isfinite(fraction) or not 0.0 < fraction < 1.0:
+            raise SplineGenerationError("pitch release phase fraction은 (0,1)이어야 합니다.")
+        if not np.isfinite(half_duration) or half_duration <= 0.0:
+            raise SplineGenerationError("pitch release half duration은 양수여야 합니다.")
+        recovery_duration = float(sum(parameters.phase_durations_s[2:4]))
+        peak_time = fraction * recovery_duration
+        if (
+            peak_time - half_duration < -1.0e-12
+            or peak_time + half_duration > recovery_duration + 1.0e-12
+        ):
+            raise SplineGenerationError(
+                "pitch release pulse가 P2→P4 recovery/return 구간 안에 들어가지 않습니다: "
+                f"recovery={recovery_duration:.6g}s, peak={peak_time:.6g}s, "
+                f"half={half_duration:.6g}s"
+            )
+        return cls(
+            waypoints,
+            PitchHoldGlobalSpline.from_waypoints(waypoints),
+            parameters,
+            angle,
+            fraction,
+            half_duration,
+        )
+
+    @property
+    def start_time_s(self) -> float:
+        return self._base_spline.start_time_s
+
+    @property
+    def end_time_s(self) -> float:
+        return self._base_spline.end_time_s
+
+    @staticmethod
+    def _minimum_jerk_derivative(
+        unit_time: np.ndarray,
+        derivative: int,
+    ) -> np.ndarray:
+        return PitchHoldTossImpulseSpline._minimum_jerk_derivative(
+            unit_time,
+            derivative,
+        )
+
+    def _release(self, time_s: np.ndarray, derivative: int) -> np.ndarray:
+        phase_durations = self._parameters.phase_durations_s
+        recovery_start = float(phase_durations[0] + phase_durations[1])
+        recovery_duration = float(sum(phase_durations[2:4]))
+        cycle_time = float(self._parameters.cycle_time)
+        relative = np.asarray(time_s, dtype=float) - self.start_time_s
+        cycle_index = np.floor(relative / cycle_time)
+        cycle_index = np.clip(cycle_index, 0.0, self.waypoints.cycle_count - 1)
+        cycle_time_s = relative - cycle_index * cycle_time
+        recovery_time = cycle_time_s - recovery_start
+        peak_time = self.release_phase_fraction * recovery_duration
+        pulse_start = peak_time - self.half_duration_s
+        pulse_end = peak_time + self.half_duration_s
+        active = (recovery_time >= pulse_start) & (recovery_time <= pulse_end)
+        result = np.zeros_like(relative, dtype=float)
+        if not np.any(active):
+            return result
+
+        active_time = recovery_time[active]
+        rising = active_time <= peak_time
+        values = np.empty_like(active_time)
+        if np.any(rising):
+            unit = np.clip(
+                (active_time[rising] - pulse_start) / self.half_duration_s,
+                0.0,
+                1.0,
+            )
+            values[rising] = (
+                -self.release_angle_rad
+                * self._minimum_jerk_derivative(unit, derivative)
+                / self.half_duration_s**derivative
+            )
+        if np.any(~rising):
+            unit = np.clip(
+                (active_time[~rising] - peak_time) / self.half_duration_s,
+                0.0,
+                1.0,
+            )
+            values[~rising] = (
+                self.release_angle_rad
+                * self._minimum_jerk_derivative(unit, derivative)
+                / self.half_duration_s**derivative
+            )
+            if derivative == 0:
+                values[~rising] -= self.release_angle_rad
+        result[active] = values
+        return result
+
+    def evaluate(self, time_s: float | np.ndarray, derivative: int = 0) -> np.ndarray:
+        query = np.asarray(time_s, dtype=float)
+        result = np.asarray(
+            self._base_spline.evaluate(query, derivative=derivative),
+            dtype=float,
+        ).copy()
+        release = self._release(query.reshape(-1), derivative).reshape(query.shape)
+        result[..., 4] += release
+        return result
+
+    def sample(
+        self,
+        parameters: Any,
+        sample_rate_hz: float,
+        frame_context: WokFrameContext,
+    ) -> Trajectory:
+        return _sample_spline(self, parameters, sample_rate_hz, frame_context)
+
+
+@dataclass(frozen=True, slots=True)
+class CoupledPitchLiftImpulseSpline:
+    """pitch release와 상향 병진 pulse를 같은 minimum-jerk 시간창에 겹친다."""
+
+    waypoints: WaypointSequence
+    _pitch_spline: PitchReleaseImpulseSpline
+    lift_height_m: float
+
+    @classmethod
+    def from_waypoints(
+        cls,
+        waypoints: WaypointSequence,
+        parameters: Any,
+        *,
+        release_angle_rad: float,
+        release_phase_fraction: float,
+        half_duration_s: float,
+        lift_height_m: float,
+    ) -> CoupledPitchLiftImpulseSpline:
+        height = float(lift_height_m)
+        if not np.isfinite(height) or height <= 0.0:
+            raise SplineGenerationError("coupled lift height는 양수여야 합니다.")
+        pitch_spline = PitchReleaseImpulseSpline.from_waypoints(
+            waypoints,
+            parameters,
+            release_angle_rad=release_angle_rad,
+            release_phase_fraction=release_phase_fraction,
+            half_duration_s=half_duration_s,
+        )
+        return cls(waypoints, pitch_spline, height)
+
+    @property
+    def start_time_s(self) -> float:
+        return self._pitch_spline.start_time_s
+
+    @property
+    def end_time_s(self) -> float:
+        return self._pitch_spline.end_time_s
+
+    def evaluate(self, time_s: float | np.ndarray, derivative: int = 0) -> np.ndarray:
+        query = np.asarray(time_s, dtype=float)
+        result = np.asarray(
+            self._pitch_spline.evaluate(query, derivative=derivative),
+            dtype=float,
+        ).copy()
+        release = self._pitch_spline._release(
+            query.reshape(-1),
+            derivative,
+        ).reshape(query.shape)
+        # _release는 정점에서 -release_angle이므로 같은 시간창의 0→1→0
+        # minimum-jerk pulse로 정규화해 팬의 z 상승에 적용한다.
+        normalized_lift = -release / self._pitch_spline.release_angle_rad
+        result[..., 2] += self.lift_height_m * normalized_lift
+        return result
+
+    def sample(
+        self,
+        parameters: Any,
+        sample_rate_hz: float,
+        frame_context: WokFrameContext,
+    ) -> Trajectory:
+        return _sample_spline(self, parameters, sample_rate_hz, frame_context)
+
+
+@dataclass(frozen=True, slots=True)
+class PitchHoldTossImpulseSpline:
+    """기존 pitch-hold spline에 복귀 구간 한정 상향 minimum-jerk pulse를 더한다."""
+
+    waypoints: WaypointSequence
+    _base_spline: PitchHoldGlobalSpline
+    _parameters: Any
+    impulse_height_m: float
+    impulse_phase_fraction: float
+
+    @classmethod
+    def from_waypoints(
+        cls,
+        waypoints: WaypointSequence,
+        parameters: Any,
+        *,
+        impulse_height_m: float,
+        impulse_phase_fraction: float,
+    ) -> PitchHoldTossImpulseSpline:
+        height = float(impulse_height_m)
+        fraction = float(impulse_phase_fraction)
+        if not np.isfinite(height) or height <= 0.0:
+            raise SplineGenerationError("toss impulse height는 양수여야 합니다.")
+        if not np.isfinite(fraction) or not 0.0 < fraction < 1.0:
+            raise SplineGenerationError("toss impulse phase fraction은 (0,1)이어야 합니다.")
+        return cls(
+            waypoints,
+            PitchHoldGlobalSpline.from_waypoints(waypoints),
+            parameters,
+            height,
+            fraction,
+        )
+
+    @property
+    def start_time_s(self) -> float:
+        return self._base_spline.start_time_s
+
+    @property
+    def end_time_s(self) -> float:
+        return self._base_spline.end_time_s
+
+    @staticmethod
+    def _minimum_jerk_derivative(
+        unit_time: np.ndarray,
+        derivative: int,
+    ) -> np.ndarray:
+        if derivative == 0:
+            return 10.0 * unit_time**3 - 15.0 * unit_time**4 + 6.0 * unit_time**5
+        if derivative == 1:
+            return 30.0 * unit_time**2 - 60.0 * unit_time**3 + 30.0 * unit_time**4
+        if derivative == 2:
+            return 60.0 * unit_time - 180.0 * unit_time**2 + 120.0 * unit_time**3
+        if derivative == 3:
+            return 60.0 - 360.0 * unit_time + 360.0 * unit_time**2
+        raise ValueError("derivative는 0, 1, 2, 3 중 하나여야 합니다.")
+
+    def _impulse(self, time_s: np.ndarray, derivative: int) -> np.ndarray:
+        phase_durations = self._parameters.phase_durations_s
+        recovery_start = float(phase_durations[0] + phase_durations[1])
+        recovery_duration = float(phase_durations[2])
+        cycle_time = float(self._parameters.cycle_time)
+        relative = np.asarray(time_s, dtype=float) - self.start_time_s
+        cycle_index = np.floor(relative / cycle_time)
+        cycle_index = np.clip(cycle_index, 0.0, self.waypoints.cycle_count - 1)
+        cycle_time_s = relative - cycle_index * cycle_time
+        recovery_time = cycle_time_s - recovery_start
+        active = (recovery_time >= 0.0) & (recovery_time <= recovery_duration)
+        result = np.zeros_like(relative, dtype=float)
+        if not np.any(active):
+            return result
+
+        peak_time = self.impulse_phase_fraction * recovery_duration
+        active_time = recovery_time[active]
+        rising = active_time <= peak_time
+        values = np.empty_like(active_time)
+        if np.any(rising):
+            duration = peak_time
+            unit = np.clip(active_time[rising] / duration, 0.0, 1.0)
+            values[rising] = (
+                self.impulse_height_m
+                * self._minimum_jerk_derivative(unit, derivative)
+                / duration**derivative
+            )
+        if np.any(~rising):
+            duration = recovery_duration - peak_time
+            unit = np.clip((active_time[~rising] - peak_time) / duration, 0.0, 1.0)
+            values[~rising] = (
+                -self.impulse_height_m
+                * self._minimum_jerk_derivative(unit, derivative)
+                / duration**derivative
+            )
+            if derivative == 0:
+                values[~rising] += self.impulse_height_m
+        result[active] = values
+        return result
+
+    def evaluate(self, time_s: float | np.ndarray, derivative: int = 0) -> np.ndarray:
+        query = np.asarray(time_s, dtype=float)
+        result = np.asarray(
+            self._base_spline.evaluate(query, derivative=derivative),
+            dtype=float,
+        ).copy()
+        impulse = self._impulse(query.reshape(-1), derivative).reshape(query.shape)
+        result[..., 2] += impulse
+        return result
+
+    def sample(
+        self,
+        parameters: Any,
+        sample_rate_hz: float,
+        frame_context: WokFrameContext,
+    ) -> Trajectory:
+        return _sample_spline(self, parameters, sample_rate_hz, frame_context)
+
+
 def generate_trajectory(
     action_or_parameters: (Sequence[float] | np.ndarray | Mapping[str, Any] | TrajectoryParameters),
     config: Any,
