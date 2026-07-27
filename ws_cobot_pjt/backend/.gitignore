@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+wok_test4.log
+food.db
