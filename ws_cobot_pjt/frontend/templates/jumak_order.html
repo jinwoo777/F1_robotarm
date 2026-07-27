@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>테이블 오더</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg-color: #F8F9FA;
+    --card-bg: #FFFFFF;
+    --text-main: #212529;
+    --text-muted: #6C757D;
+    --primary: #E05A33;
+    --primary-hover: #C24A26;
+    --border: #DEE2E6;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0; font-family: 'Noto Sans KR', sans-serif;
+    background-color: var(--bg-color); color: var(--text-main);
+    display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden;
+  }
+  
+  /* Top Bar */
+  .top-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 15px 30px; background: var(--card-bg); border-bottom: 1px solid var(--border);
+  }
+  .top-brand { display: flex; align-items: center; gap: 20px; }
+  .logo { font-size: 24px; font-weight: 800; color: var(--primary); letter-spacing: -0.5px; }
+  .table-info { font-size: 18px; font-weight: 700; color: var(--text-main); border-left: 2px solid var(--border); padding-left: 20px;}
+  .top-status { display: flex; align-items: center; gap: 15px; color: var(--text-muted); font-size: 14px;}
+  .lang-select { border: 1px solid var(--border); border-radius: 20px; padding: 5px 15px; background: #fff; font-weight: bold;}
+
+  /* Category Bar */
+  .category-bar {
+    background: var(--primary); padding: 10px 30px; display: flex; align-items: center; gap: 15px;
+    overflow-x: auto; white-space: nowrap;
+  }
+  .category-btn {
+    background: transparent; border: none; color: rgba(255,255,255,0.7);
+    font-size: 18px; padding: 10px 20px; border-radius: 30px;
+    cursor: pointer; font-weight: 700; transition: all 0.2s;
+  }
+  .category-btn.active {
+    background: #FFFFFF; color: var(--primary);
+  }
+
+  /* Main Area */
+  .main-area {
+    flex: 1; padding: 30px; overflow-y: auto;
+  }
+  .page-header {
+    display: flex; align-items: center; margin-bottom: 25px; gap: 15px;
+  }
+  .page-title {
+    font-size: 24px; font-weight: 800; margin: 0;
+  }
+  .page-subtitle {
+    font-size: 16px; color: var(--text-muted); border-left: 2px solid var(--border); padding-left: 15px;
+  }
+  
+  .menu-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 30px;
+  }
+  .menu-card {
+    background: var(--card-bg); border-radius: var(--radius); padding: 20px;
+    text-align: center; cursor: pointer; position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid transparent;
+  }
+  .menu-card:active { transform: scale(0.98); }
+  .menu-card:hover { border-color: var(--primary); }
+  .menu-card.soldout { opacity: 0.5; pointer-events: none; }
+  .soldout-badge {
+    position: absolute; top: 15px; right: 15px; background: #D32F2F; color: #FFF;
+    padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; z-index: 2;
+  }
+  .menu-img {
+    width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; margin-bottom: 15px;
+    background-color: #2b3956; /* 레퍼런스 스타일 네이비 배경 */
+  }
+  .menu-name { font-size: 22px; font-weight: 700; margin: 0 0 10px; color: var(--text-main);}
+  .menu-price { font-size: 20px; font-weight: 800; color: var(--text-main); margin: 0; }
+  .menu-price-original { display: block; font-size: 14px; font-weight: 500; color: var(--text-muted); text-decoration: line-through; margin-bottom: 2px; }
+  .discount-badge {
+    position: absolute; top: 15px; right: 15px; background: var(--primary); color: #FFF;
+    padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; z-index: 2;
+  }
+  
+  .qty-badge {
+    position: absolute; top: -10px; right: -10px; background: var(--primary); color: white;
+    width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: bold; box-shadow: 0 2px 6px rgba(0,0,0,0.3); opacity: 0; transform: scale(0.5); transition: all 0.2s;
+  }
+  .qty-badge.show { opacity: 1; transform: scale(1); }
+
+  /* Bottom Bar */
+  .bottom-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 15px 30px; background: var(--card-bg); border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+  }
+  .bottom-actions {
+    display: flex; gap: 20px;
+  }
+  .action-btn {
+    background: transparent; border: none; color: var(--text-main);
+    font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+    cursor: pointer; padding: 10px 15px; border-radius: 8px; transition: background 0.2s;
+  }
+  .action-btn:hover { background: #f1f3f5; }
+  
+  .cart-btn {
+    background: var(--primary); color: #FFF; border: none; border-radius: 30px;
+    padding: 15px 40px; font-size: 22px; font-weight: 800; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; transition: background 0.2s; box-shadow: 0 4px 12px rgba(74, 101, 240, 0.4);
+  }
+  .cart-btn:hover { background: var(--primary-hover); }
+  .cart-badge {
+    background: white; color: var(--primary); width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold;
+  }
+
+  /* Sidebar Cart Modal */
+  .cart-sidebar-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5); z-index: 1000;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+  .cart-sidebar-overlay.show { opacity: 1; pointer-events: auto; }
+  
+  .cart-sidebar {
+    position: fixed; top: 0; right: -400px; width: 400px; height: 100%;
+    background: var(--card-bg); box-shadow: -4px 0 15px rgba(0,0,0,0.1);
+    display: flex; flex-direction: column; transition: right 0.3s; z-index: 1001;
+  }
+  .cart-sidebar.show { right: 0; }
+  
+  .cart-header {
+    padding: 25px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;
+    font-size: 24px; font-weight: 800;
+  }
+  .close-btn { background: transparent; border: none; font-size: 28px; cursor: pointer; color: var(--text-muted); }
+  
+  .cart-items { flex: 1; overflow-y: auto; padding: 25px; }
+  .cart-item {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+  }
+  .cart-item-info { flex: 1; }
+  .cart-item-name { font-size: 18px; font-weight: 700; margin-bottom: 5px; }
+  .cart-item-price { font-size: 16px; color: var(--text-muted); }
+  .cart-item-price-original { font-size: 13px; color: var(--text-muted); text-decoration: line-through; margin-right: 6px; }
+  .cart-item-actions { display: flex; align-items: center; gap: 12px; }
+  .stepper-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: #FFF;
+    font-size: 20px; color: var(--text-main); display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .stepper-qty { font-size: 18px; font-weight: bold; width: 24px; text-align: center; }
+  
+  .cart-footer { padding: 25px; border-top: 1px solid var(--border); background: #F8F9FA; }
+  .cart-total { display: flex; justify-content: space-between; font-size: 24px; font-weight: 800; margin-bottom: 20px; }
+  .order-btn {
+    width: 100%; padding: 20px; background: var(--primary); color: #FFF; border: none; border-radius: 12px;
+    font-size: 22px; font-weight: 800; cursor: pointer;
+  }
+  
+  /* Toast */
+  .toast {
+    position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
+    background: rgba(33, 37, 41, 0.9); color: white; padding: 15px 30px;
+    border-radius: 30px; font-size: 18px; font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 2000;
+  }
+  .toast.show { opacity: 1; }
+
+  [hidden] { display: none !important; }
+
+  /* 손님 휴대폰(세로 화면) 대응 — 원래 태블릿 키오스크 전용으로 만들어져 있어서
+     좁은 화면에서 상단바 텍스트가 겹치고 하단바가 밀리는 문제를 여기서 정리한다. */
+  @media (max-width: 600px) {
+    .top-bar { padding: 12px 16px; gap: 10px; }
+    .top-brand { gap: 10px; min-width: 0; }
+    .logo { font-size: 18px; flex-shrink: 0; }
+    .table-info { font-size: 14px; padding-left: 10px; white-space: nowrap; flex-shrink: 0; }
+    .device-no { display: none; }
+    .lang-select { font-size: 12px; padding: 4px 10px; white-space: nowrap; }
+
+    .category-bar { padding: 8px 16px; gap: 8px; }
+    .category-btn { font-size: 14px; padding: 8px 14px; }
+
+    .main-area { padding: 16px; }
+    .page-header { flex-wrap: wrap; margin-bottom: 16px; gap: 8px; }
+    .page-title { font-size: 20px; }
+    .page-subtitle { font-size: 13px; padding-left: 12px; }
+
+    .menu-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .menu-card { padding: 12px; }
+    .menu-name { font-size: 16px; margin-bottom: 6px; }
+    .menu-price { font-size: 15px; }
+
+    .bottom-bar { padding: 8px 10px; gap: 6px; }
+    .bottom-actions { gap: 20px; }
+    .action-btn {
+      flex-direction: column; font-size: 10px; padding: 6px 4px; gap: 2px;
+      white-space: nowrap;
+    }
+    .action-btn .icon { font-size: 18px; }
+    .cart-btn { padding: 10px 16px; font-size: 14px; gap: 4px; white-space: nowrap; }
+
+    .cart-sidebar { width: 100%; right: -100%; }
+
+    #history-popup { width: calc(100% - 40px); left: 20px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Toast -->
+  <div id="toast" class="toast">알림</div>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="top-brand">
+      <div class="logo">BOKA</div>
+      <div class="table-info">홀 {{ "%02d"|format(table_number|int(1)) }}</div>
+    </div>
+    <div class="top-status">
+      <span class="device-no">장비번호 : ABC12345</span>
+      <div class="lang-select">🇰🇷 KOR ⌄</div>
+    </div>
+  </header>
+
+  <!-- Category Bar -->
+  <nav class="category-bar">
+    <button class="category-btn active" data-category="all">오늘의 메뉴</button>
+    <button class="category-btn" data-category="set">세트 메뉴</button>
+    <button class="category-btn" data-category="food">식사류</button>
+    <button class="category-btn" data-category="food">안주류</button>
+    <button class="category-btn" data-category="drink">주류</button>
+  </nav>
+
+  <!-- Main Area -->
+  <main class="main-area">
+    <div class="page-header">
+      <h2 class="page-title" id="page-title">오늘의 메뉴</h2>
+      <span class="page-subtitle">30년 경력의 셰프가 로봇과 함께 선보이는 완벽한 요리</span>
+    </div>
+    <div class="menu-grid" id="menu-grid">
+      <!-- JS 렌더링 -->
+    </div>
+  </main>
+
+  <!-- Bottom Bar -->
+  <footer class="bottom-bar">
+    <div class="bottom-actions">
+      <button class="action-btn" onclick="showNotice()"><span class="icon">📢</span><span class="label">안내사항</span></button>
+      <button class="action-btn" onclick="showOrderHistory()"><span class="icon">🧾</span><span class="label">주문내역</span></button>
+      <button class="action-btn" id="call-staff-btn" onclick="callStaff()"><span class="icon">🔔</span><span class="label">직원호출</span></button>
+    </div>
+    <button class="cart-btn" onclick="toggleCart()">
+      <span class="icon">🛒</span><span class="label">장바구니</span> <div class="cart-badge" id="cart-badge">0</div>
+    </button>
+  </footer>
+
+  <!-- Cart Sidebar -->
+  <div class="cart-sidebar-overlay" id="cart-overlay" onclick="toggleCart()"></div>
+  <aside class="cart-sidebar" id="cart-sidebar">
+    <div class="cart-header">
+      주문서
+      <button class="close-btn" onclick="toggleCart()">×</button>
+    </div>
+    <div class="cart-items" id="cart-items">
+      <!-- JS 렌더링 -->
+    </div>
+    <div class="cart-footer">
+      <div class="cart-total">
+        <span>합계</span>
+        <span id="total-amount">0원</span>
+      </div>
+      <button class="order-btn" id="order-button">주문하기</button>
+    </div>
+  </aside>
+
+  <!-- 주문내역 팝업 -->
+  <div id="history-popup" style="position:fixed; bottom:80px; left:30px; background:var(--card-bg); padding:20px; border-radius:12px; width:400px; max-width:90%; box-shadow:0 10px 30px rgba(0,0,0,0.15); z-index:1500; opacity:0; pointer-events:none; transition:opacity 0.2s, transform 0.2s; transform:translateY(10px);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="margin:0; font-size:20px; font-weight:800;">주문 내역</h2>
+      <button onclick="closeOrderHistory()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-main);">×</button>
+    </div>
+    <div id="history-items" style="max-height:350px; overflow-y:auto;">
+      <!-- JS 렌더링 -->
+    </div>
+  </div>
+
+  <!-- 안내사항 팝업 -->
+  <div id="notice-popup" style="position:fixed; bottom:80px; left:30px; background:var(--card-bg); padding:20px; border-radius:12px; width:400px; max-width:90%; box-shadow:0 10px 30px rgba(0,0,0,0.15); z-index:1500; opacity:0; pointer-events:none; transition:opacity 0.2s, transform 0.2s; transform:translateY(10px);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="margin:0; font-size:20px; font-weight:800;">이용 안내</h2>
+      <button onclick="closeNotice()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-main);">×</button>
+    </div>
+    <div style="max-height:350px; overflow-y:auto; font-size:15px; line-height:1.7; color:var(--text-main);">
+      <p><b>🍳 주문 방법</b><br>메뉴를 선택해 장바구니에 담고 '주문하기'를 누르면 바로 접수됩니다.</p>
+      <p><b>🤖 조리 안내</b><br>주문이 접수되면 협동로봇이 순서대로 자동 조리합니다. 메뉴에 따라 조리에 약 10~15분 정도 소요될 수 있습니다.</p>
+      <p><b>⚠️ 알레르기 유발 성분</b><br>일부 메뉴에 계란, 대두, 밀, 돼지고기가 포함될 수 있습니다. 알레르기가 있으시면 주문 전 직원호출로 문의해 주세요.</p>
+      <p><b>🔔 직원호출</b><br>도움이 필요하시면 하단의 '직원호출' 버튼을 눌러주세요. 담당 직원이 바로 확인 후 테이블로 찾아갑니다.</p>
+    </div>
+  </div>
+
+<script>
+const CONFIG = { ORDER_ENDPOINT: "/api/orders", TABLE_NUMBER: "{{ table_number }}" };
+
+// DB의 부침개 메뉴 연동을 위해 name을 '부침개'로 세팅
+const menuData = [
+  { id: "menu1", name: "볶음밥", price: 15000, category: "food", image: "/static/images/fried_rice.png", soldout: false },
+  { id: "menu2", name: "부침개", price: 12000, category: "food", image: "/static/images/buchimgae.png", soldout: false },
+  { id: "menu3", name: "막걸리", price: 5000, category: "drink", image: "/static/images/makgeolli.png", soldout: false },
+  // 세트 메뉴: 화면에는 하나의 카드로 보이지만, 주문 시에는 아래 comboItems로 분해되어
+  // '부침개'/'막걸리' 이름 그대로 전송된다 — DB의 RECIPES/재고 차감, app.py의 MENU_TO_DISH
+  // (조리 로봇 dish 선택)가 정확한 메뉴 이름 매칭에 의존하기 때문에 새 이름을 쓰면 안 된다.
+  {
+    id: "set1", name: "부막 세트", price: 15000, originalPrice: 17000,
+    category: "set", image: "/static/images/pancake_makgeolli_set.png", soldout: false,
+    comboItems: [
+      { name: "부침개", price: 10000 },
+      { name: "막걸리", price: 5000 },
+    ],
+  },
+];
+
+let quantities = {};
+menuData.forEach(item => quantities[item.id] = 0);
+let currentCategory = "all";
+
+// DOM
+const menuGridEl = document.getElementById("menu-grid");
+const cartItemsEl = document.getElementById("cart-items");
+const totalAmountEl = document.getElementById("total-amount");
+const orderButton = document.getElementById("order-button");
+const toastEl = document.getElementById("toast");
+const cartOverlay = document.getElementById("cart-overlay");
+const cartSidebar = document.getElementById("cart-sidebar");
+const cartBadge = document.getElementById("cart-badge");
+
+function showToast(message) {
+  toastEl.textContent = message;
+  toastEl.classList.add("show");
+  setTimeout(() => toastEl.classList.remove("show"), 2500);
+}
+
+function formatWon(num) {
+  return num.toLocaleString("ko-KR");
+}
+
+function openPopup(id) {
+  const popup = document.getElementById(id);
+  popup.style.opacity = "1";
+  popup.style.pointerEvents = "auto";
+  popup.style.transform = "translateY(0)";
+}
+
+function closePopup(id) {
+  const popup = document.getElementById(id);
+  popup.style.opacity = "0";
+  popup.style.pointerEvents = "none";
+  popup.style.transform = "translateY(10px)";
+}
+
+const ORDER_STATUS_LABEL = { WAITING: "대기중", COOKING: "조리중", DONE: "완료" };
+
+async function showOrderHistory() {
+  closePopup("notice-popup");
+  const historyItemsEl = document.getElementById("history-items");
+  historyItemsEl.innerHTML = "<div style='text-align:center; padding:40px; color:#888;'>불러오는 중...</div>";
+  openPopup("history-popup");
+
+  try {
+    const res = await fetch(`/api/orders?table=${encodeURIComponent(CONFIG.TABLE_NUMBER)}`);
+    if (!res.ok) throw new Error("Server Error");
+    const orders = await res.json();
+
+    if (orders.length === 0) {
+      historyItemsEl.innerHTML = "<div style='text-align:center; padding:40px; color:#888;'>주문하신 내역이 없습니다.</div>";
+      return;
+    }
+
+    historyItemsEl.innerHTML = orders.map(order => {
+      const itemsHtml = order.order_items.map(i =>
+        `<div style="display:flex; justify-content:space-between; margin-bottom:5px; font-size:15px; color:var(--text-main);"><span>${i[0]} x ${i[1]}</span><span>${formatWon(i[2] * i[1])}원</span></div>`
+      ).join("");
+      const statusText = ORDER_STATUS_LABEL[String(order.status).toUpperCase()] || order.status;
+      return `
+        <div style="margin-bottom:15px; padding:15px; background:#f8f9fa; border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:10px; font-size:16px;">
+            <span style="font-weight:bold;">주문 #${order.order_id} <span style="font-weight:normal; color:var(--text-muted); font-size:13px;">${statusText}</span></span>
+            <span style="color:var(--primary); font-weight:bold;">${formatWon(order.total_price)}원</span>
+          </div>
+          ${itemsHtml}
+        </div>`;
+    }).join("");
+  } catch (error) {
+    console.error(error);
+    historyItemsEl.innerHTML = "<div style='text-align:center; padding:40px; color:#888;'>주문내역을 불러오지 못했습니다.</div>";
+  }
+}
+
+function closeOrderHistory() {
+  closePopup("history-popup");
+}
+
+function showNotice() {
+  closePopup("history-popup");
+  openPopup("notice-popup");
+}
+
+function closeNotice() {
+  closePopup("notice-popup");
+}
+
+async function callStaff() {
+  const btn = document.getElementById("call-staff-btn");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/call_staff", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tableNumber: CONFIG.TABLE_NUMBER })
+    });
+    if (!res.ok) throw new Error("Server Error");
+    showToast("🔔 직원을 호출했습니다. 잠시만 기다려주세요.");
+  } catch (error) {
+    console.error(error);
+    showToast("직원호출에 실패했습니다. 다시 시도해주세요.");
+  } finally {
+    setTimeout(() => { btn.disabled = false; }, 5000); // 연속 클릭으로 여러 번 호출되는 것 방지
+  }
+}
+
+function renderMenu() {
+  menuGridEl.innerHTML = "";
+  const filtered = currentCategory === "all" ? menuData : menuData.filter(m => m.category === currentCategory);
+  
+  filtered.forEach(item => {
+    const qty = quantities[item.id];
+    const card = document.createElement("div");
+    card.className = `menu-card ${item.soldout ? 'soldout' : ''}`;
+    card.onclick = () => { if(!item.soldout) addOne(item.id); };
+    
+    card.innerHTML = `
+      ${item.soldout ? '<div class="soldout-badge">품절</div>' : (item.originalPrice ? '<div class="discount-badge">할인</div>' : '')}
+      <div class="qty-badge ${qty > 0 ? 'show' : ''}" id="badge-${item.id}">${qty}</div>
+      <img src="${item.image}" alt="${item.name}" class="menu-img">
+      <h3 class="menu-name">${item.name}</h3>
+      <p class="menu-price">
+        ${item.originalPrice ? `<span class="menu-price-original">${formatWon(item.originalPrice)}원</span>` : ''}
+        ${formatWon(item.price)}원
+      </p>
+    `;
+    menuGridEl.appendChild(card);
+  });
+}
+
+function addOne(id) {
+  quantities[id]++;
+  renderMenu();
+  renderCart();
+  // Animation effect on card could be added here
+}
+
+function updateQty(menuId, delta) {
+  const next = Math.max(0, quantities[menuId] + delta);
+  quantities[menuId] = next;
+  renderMenu();
+  renderCart();
+}
+
+function renderCart() {
+  cartItemsEl.innerHTML = "";
+  let total = 0;
+  let totalQty = 0;
+  
+  menuData.forEach(item => {
+    const qty = quantities[item.id];
+    if (qty > 0) {
+      total += item.price * qty;
+      totalQty += qty;
+      const cartItem = document.createElement("div");
+      cartItem.className = "cart-item";
+      cartItem.innerHTML = `
+        <div class="cart-item-info">
+          <div class="cart-item-name">${item.name}</div>
+          <div class="cart-item-price">${item.originalPrice ? `<span class="cart-item-price-original">${formatWon(item.originalPrice * qty)}원</span>` : ''}${formatWon(item.price * qty)}원</div>
+        </div>
+        <div class="cart-item-actions">
+          <button class="stepper-btn" onclick="updateQty('${item.id}', -1)">-</button>
+          <span class="stepper-qty">${qty}</span>
+          <button class="stepper-btn" onclick="updateQty('${item.id}', 1)">+</button>
+        </div>
+      `;
+      cartItemsEl.appendChild(cartItem);
+    }
+  });
+  
+  if (totalQty === 0) {
+    cartItemsEl.innerHTML = "<div style='color:#888; text-align:center; margin-top:50px;'>장바구니가 비어있습니다.</div>";
+  }
+  
+  totalAmountEl.textContent = formatWon(total) + "원";
+  cartBadge.textContent = totalQty;
+}
+
+function toggleCart() {
+  cartOverlay.classList.toggle("show");
+  cartSidebar.classList.toggle("show");
+}
+
+document.querySelectorAll(".category-btn").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    document.querySelectorAll(".category-btn").forEach(b => b.classList.remove("active"));
+    e.target.classList.add("active");
+    currentCategory = e.target.dataset.category;
+    document.getElementById("page-title").textContent = e.target.textContent;
+    renderMenu();
+  });
+});
+
+orderButton.addEventListener("click", async () => {
+  // 세트 메뉴(comboItems가 있는 항목)는 화면에는 한 장의 카드로 보이지만, 서버로는
+  // 구성 메뉴('부침개'/'막걸리') 각각의 이름/수량으로 풀어서 보낸다. DB의 재고 차감과
+  // 조리 로봇 dish 선택이 정확한 메뉴 이름 매칭에 의존하기 때문.
+  const items = [];
+  menuData.filter(i => quantities[i.id] > 0).forEach(i => {
+    const qty = quantities[i.id];
+    if (i.comboItems) {
+      i.comboItems.forEach(c => items.push({ menuId: i.id, name: c.name, price: c.price, qty }));
+    } else {
+      items.push({ menuId: i.id, name: i.name, price: i.price, qty });
+    }
+  });
+
+  if (items.length === 0) {
+    showToast("장바구니가 비어있습니다.");
+    return;
+  }
+
+  const totalPrice = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const payload = { items, totalPrice, tableNumber: CONFIG.TABLE_NUMBER };
+
+  orderButton.disabled = true;
+  orderButton.textContent = "접수 중...";
+
+  try {
+    const response = await fetch(CONFIG.ORDER_ENDPOINT, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) throw new Error("Server Error");
+    const result = await response.json();
+
+    if (result.status === "error") {
+      showToast(result.message);
+      loadInventory();
+      return;
+    }
+
+    showToast(`✅ 주문이 접수되었습니다. (번호: ${result.orderId || '-'})`);
+    Object.keys(quantities).forEach(k => quantities[k] = 0);
+    toggleCart();
+    renderMenu();
+    renderCart();
+    loadInventory();
+
+  } catch (error) {
+    console.error(error);
+    showToast("주문 접수에 실패했습니다.");
+  } finally {
+    orderButton.disabled = false;
+    orderButton.textContent = "주문하기";
+  }
+});
+
+async function loadInventory(){
+    const response = await fetch("/api/inventory");
+    const inventory = await response.json();
+
+    inventory.forEach(item=>{
+        const menu = menuData.find(m => m.id === item.id);
+        if(menu) {
+            menu.soldout = item.stock === 0;
+            if(menu.soldout && quantities[item.id] > 0) quantities[item.id] = 0;
+        }
+    });
+
+    // 세트 메뉴는 구성 메뉴(부침개/막걸리) 중 하나라도 품절이면 같이 품절 처리
+    menuData.filter(m => m.comboItems).forEach(combo => {
+        combo.soldout = combo.comboItems.some(c => {
+            const part = menuData.find(m => m.name === c.name && !m.comboItems);
+            return part && part.soldout;
+        });
+        if (combo.soldout && quantities[combo.id] > 0) quantities[combo.id] = 0;
+    });
+
+    renderMenu();
+    renderCart();
+}
+
+loadInventory().then(() => {
+    renderMenu();
+    renderCart();
+});
+</script>
+</body>
+</html>

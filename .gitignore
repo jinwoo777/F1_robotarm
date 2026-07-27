@@ -1,0 +1,19 @@
+# ROS 2 colcon 산출물
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 런타임 생성물 — 저장소에 올리지 않는다
+*.db          # backend/food.db (주문/재고 데이터)
+*.log         # backend/wok_integrate.log (조리 실행 로그)
+qrcodes/      # generate_table_qr.py 가 매장 IP 기준으로 새로 만든다
+
+# 에디터/OS
+.vscode/
+.idea/
+.DS_Store
