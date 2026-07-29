@@ -1,0 +1,17 @@
+# Python 3.11+
+#
+# Reinforce/pyproject.toml is the source of truth for the simulator, training,
+# robot-validation, and development dependencies. Installing it as an editable
+# package also makes the `wok-sim` command available.
+-e ./Reinforce[robot,dev]
+
+# Web ordering backend
+Flask>=3.0,<4
+
+# Table QR-code generator (`pil` installs the Pillow image backend)
+qrcode[pil]>=7.4,<9
+
+# ROS 2 packages (rclpy, std_msgs, geometry_msgs, launch, launch_ros), ament
+# build/test tools, and Doosan packages (dsr_msgs2, dsr_common2) are not PyPI
+# dependencies. Install them in the ROS 2 Humble environment via apt/rosdep and
+# the upstream doosan-robot2 workspace before running `colcon build`.
